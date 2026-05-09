@@ -2,6 +2,7 @@
 
 #include "app_util.h"
 #include "hardware.h"
+#include "logging.h"
 #include "main.h"
 
 #include <stdlib.h>
@@ -423,9 +424,7 @@ static void run_step(const pattern_step_t *step)
 
 static void run_pattern(const pattern_t *pattern)
 {
-#if PATTERN_LOG_ENABLED
-    os_printf("pattern: %s - %s\n", pattern->id, pattern->name);
-#endif
+    PATTERN_LOG("%s - %s", pattern->id, pattern->name);
 
     prepare_pattern_start(pattern);
 

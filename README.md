@@ -128,23 +128,17 @@ Puis il affiche le pattern en cours :
 pattern: mouse_cautious - Souris prudente
 ```
 
-Ce log est activable dans `platformio.ini` avec le tag de compilation :
+Les logs firmware sont controles par tags de compilation :
 
 ```ini
 build_flags =
+    -DAPP_LOG_ENABLED=1
     -DPATTERN_LOG_ENABLED=1
-```
-
-Mettre `0` ou retirer ce flag pour désactiver le log du pattern en cours.
-
-Les logs de l'interface Web/WiFi sont controles par :
-
-```ini
-build_flags =
     -DWEB_LOG_ENABLED=1
+    -DWEB_DEBUG_LOG_ENABLED=0
 ```
 
-Ils affichent les evenements AP, scan WiFi, selection SSID, connexion demandee, requetes HTTP et DNS captif. Le mot de passe WiFi n'est jamais affiche, seule sa longueur est loggee.
+Mettre un flag à `0` ou le retirer pour désactiver le log correspondant. `WEB_DEBUG_LOG_ENABLED` ajoute les traces très verboses HTTP/scan. Le mot de passe WiFi n'est jamais affiche, seule sa longueur est loggee.
 
 Le boot ROM de l'ESP8266 peut encore afficher quelques caractères illisibles avant le démarrage du firmware. C'est normal.
 

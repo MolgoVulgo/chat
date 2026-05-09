@@ -4,6 +4,7 @@
 
 #include "game.h"
 #include "hardware.h"
+#include "logging.h"
 #include "web.h"
 
 #include "esp_common.h"
@@ -42,10 +43,10 @@ void user_init(void)
     hardware_init();
     web_portal_init();
 
-    os_printf("Laser Cat Toy ESP8266 RTOS start - pattern engine\n");
-    os_printf("servo_h_gpio=%d servo_v_gpio=%d laser_gpio=%d\n",
-              SERVO_HORIZONTAL_GPIO, SERVO_VERTICAL_GPIO, LASER_GPIO);
-    os_printf("config_ap_ssid=%s path=/wifi\n", CONFIG_AP_SSID);
+    APP_LOG("Laser Cat Toy ESP8266 RTOS start - pattern engine");
+    APP_LOG("servo_h_gpio=%d servo_v_gpio=%d laser_gpio=%d",
+            SERVO_HORIZONTAL_GPIO, SERVO_VERTICAL_GPIO, LASER_GPIO);
+    APP_LOG("config_ap_ssid=%s path=/wifi", CONFIG_AP_SSID);
 
     xTaskCreate(hardware_servo_pwm_task, "servo_pwm", 384, NULL, 5, NULL);
     xTaskCreate(game_movement_task, "movement", 768, NULL, 3, NULL);

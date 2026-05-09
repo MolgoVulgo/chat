@@ -2,6 +2,7 @@
 
 #include "app_util.h"
 #include "game.h"
+#include "logging.h"
 #include "main.h"
 
 #include <stdio.h>
@@ -12,12 +13,6 @@
 #include "freertos/task.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/sockets.h"
-
-#if WEB_LOG_ENABLED
-#define WEB_LOG(fmt, ...) os_printf("[web] " fmt "\n", ##__VA_ARGS__)
-#else
-#define WEB_LOG(fmt, ...)
-#endif
 
 typedef struct {
     char ssid[33];
@@ -35,6 +30,14 @@ static char http_body[4096];
 static struct scan_config wifi_scan_config;
 
 static void http_send_wifi(int client);
+
+static bool station_status_needs_config_ap(STATION_STATUS status)
+{
+    return status == STATION_WRONG_PASSWORD ||
+           status == STATION_NO_AP_FOUND ||
+           status == STATION_CONNECT_FAIL ||
+           status == STATION_IDLE;
+}
 
 static void wifi_enable_config_ap(const char *reason)
 {
@@ -84,6 +87,17 @@ static const char *station_status_text(void)
     }
 }
 
+static const char *scan_status_text(void)
+{
+    if (wifi_scan_running || wifi_scan_requested) {
+        return "Scan en cours";
+    }
+    if (wifi_scan_count == 0) {
+        return "Aucun reseau scanne";
+    }
+    return "Scan termine";
+}
+
 static void wifi_scan_done_cb(void *arg, STATUS status)
 {
     wifi_scan_count = 0;
@@ -110,13 +124,13 @@ static void wifi_scan_done_cb(void *arg, STATUS status)
         uint8_t len = bss->ssid_len;
         if (len == 0 && bss->ssid[0] != '\0') {
             len = (uint8_t)strnlen((char *)bss->ssid, sizeof(bss->ssid));
-            WEB_LOG("scan ssid_len fallback len=%d", len);
+            WEB_DEBUG_LOG("scan ssid_len fallback len=%d", len);
         }
         if (len > 32) {
             len = 32;
         }
 
-        WEB_LOG("raw scan result len=%d channel=%d rssi=%d auth=%d hidden=%d",
+        WEB_DEBUG_LOG("raw scan result len=%d channel=%d rssi=%d auth=%d hidden=%d",
                 bss->ssid_len, bss->channel, bss->rssi, bss->authmode, bss->is_hidden);
 
         if (len > 0) {
@@ -134,7 +148,7 @@ static void wifi_scan_done_cb(void *arg, STATUS status)
                         wifi_scan_results[wifi_scan_count].authmode);
                 wifi_scan_count++;
             } else {
-                WEB_LOG("scan duplicate ignored ssid=%s", wifi_scan_results[wifi_scan_count].ssid);
+                WEB_DEBUG_LOG("scan duplicate ignored ssid=%s", wifi_scan_results[wifi_scan_count].ssid);
             }
         }
 
@@ -302,7 +316,7 @@ static void http_send(int client, const char *s)
         written += sent;
     }
 
-    WEB_LOG("http send complete bytes=%d", written);
+    WEB_DEBUG_LOG("http send complete bytes=%d", written);
 }
 
 static void http_send_response(int client,
@@ -322,7 +336,7 @@ static void http_send_response(int client,
              "\r\n",
              status, content_type, (int)body_len);
 
-    WEB_LOG("http response status=%s type=%s length=%d",
+    WEB_DEBUG_LOG("http response status=%s type=%s length=%d",
             status, content_type, (int)body_len);
     http_send(client, header);
     http_send(client, body);
@@ -395,6 +409,20 @@ static void append_page_end(char *body, size_t body_len, size_t *used)
     appendf(body, body_len, used, "</main></body></html>");
 }
 
+static void append_wifi_options(char *body, size_t body_len, size_t *used)
+{
+    for (uint8_t i = 0; i < wifi_scan_count; i++) {
+        WEB_DEBUG_LOG("wifi page option ssid=%s channel=%d rssi=%d",
+                wifi_scan_results[i].ssid, wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
+        appendf(body, body_len, used, "<option value=\"");
+        append_escaped(body, body_len, used, wifi_scan_results[i].ssid);
+        appendf(body, body_len, used, "\">");
+        append_escaped(body, body_len, used, wifi_scan_results[i].ssid);
+        appendf(body, body_len, used, " (ch %d, %d dBm)</option>",
+                wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
+    }
+}
+
 static void http_send_home(int client)
 {
     size_t used = 0;
@@ -414,7 +442,7 @@ static void http_send_home(int client)
             ipaddr_ntoa(&station_ip.ip));
     append_page_end(http_body, sizeof(http_body), &used);
 
-    WEB_LOG("home page served bytes=%d", (int)strlen(http_body));
+    WEB_DEBUG_LOG("home page served bytes=%d", (int)strlen(http_body));
     http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
 }
 
@@ -436,16 +464,6 @@ static void http_send_captive(int client)
 
 static void http_send_wifi(int client)
 {
-    const char *scan_status;
-
-    if (wifi_scan_running || wifi_scan_requested) {
-        scan_status = "Scan en cours";
-    } else if (wifi_scan_count == 0) {
-        scan_status = "Aucun reseau scanne";
-    } else {
-        scan_status = "Scan termine";
-    }
-
     size_t used = 0;
     http_body[0] = '\0';
     append_page_start(http_body, sizeof(http_body), &used, "Configuration WiFi");
@@ -460,18 +478,9 @@ static void http_send_wifi(int client)
             "<option value=''>Selectionner un reseau</option>",
             (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=/wifi'>" : "",
             station_status_text(),
-            scan_status);
+            scan_status_text());
 
-    for (uint8_t i = 0; i < wifi_scan_count; i++) {
-        WEB_LOG("wifi page option ssid=%s channel=%d rssi=%d",
-                wifi_scan_results[i].ssid, wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
-        appendf(http_body, sizeof(http_body), &used, "<option value=\"");
-        append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
-        appendf(http_body, sizeof(http_body), &used, "\">");
-        append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
-        appendf(http_body, sizeof(http_body), &used, " (ch %d, %d dBm)</option>",
-                wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
-    }
+    append_wifi_options(http_body, sizeof(http_body), &used);
 
     appendf(http_body, sizeof(http_body), &used,
             "</select></div>"
@@ -482,53 +491,7 @@ static void http_send_wifi(int client)
             "<p><a href='/wifi'>Rafraichir</a></p>");
     append_page_end(http_body, sizeof(http_body), &used);
 
-    WEB_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
-            (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
-    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
-}
-
-static void http_send_wifi_full(int client)
-{
-    size_t used = 0;
-
-    http_body[0] = '\0';
-    append_page_start(http_body, sizeof(http_body), &used, "Configuration WiFi");
-    appendf(http_body, sizeof(http_body), &used,
-            "<p>AP de configuration: <strong>%s</strong></p>"
-            "<p>Station: <strong>%s</strong></p>"
-            "<p class='muted'>%s</p>"
-            "<p><a href='/scan'>Scanner les reseaux</a>"
-            "<a href='/wifi'>Retour</a></p>"
-            "<form action='/connect' method='get'>"
-            "<div class='field'><label>Reseau detecte</label><select name='ssid'>",
-            CONFIG_AP_SSID,
-            station_status_text(),
-            wifi_status_message);
-
-    if (wifi_scan_running) {
-        appendf(http_body, sizeof(http_body), &used, "<option value=''>Scan en cours...</option>");
-    } else if (wifi_scan_count == 0) {
-        appendf(http_body, sizeof(http_body), &used, "<option value=''>Aucun reseau scanne</option>");
-    } else {
-        for (uint8_t i = 0; i < wifi_scan_count; i++) {
-            appendf(http_body, sizeof(http_body), &used, "<option value=\"");
-            append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
-            appendf(http_body, sizeof(http_body), &used, "\">");
-            append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
-            appendf(http_body, sizeof(http_body), &used, " (%d dBm)%s</option>",
-                    wifi_scan_results[i].rssi,
-                    wifi_scan_results[i].authmode == AUTH_OPEN ? " ouvert" : "");
-        }
-    }
-
-    appendf(http_body, sizeof(http_body), &used,
-            "</select></div>"
-            "<div class='field'><label>Ou SSID manuel</label><input name='manual_ssid'></div>"
-            "<div class='field'><label>Mot de passe</label><input name='pass' type='password'></div>"
-            "<button type='submit'>Connecter</button></form>");
-    append_page_end(http_body, sizeof(http_body), &used);
-
-    WEB_LOG("wifi full page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
+    WEB_DEBUG_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
             (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
     http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
 }
@@ -542,7 +505,7 @@ static void http_send_no_content(int client)
         "Cache-Control: no-store\r\n"
         "\r\n";
 
-    WEB_LOG("http response status=204 No Content length=0");
+    WEB_DEBUG_LOG("http response status=204 No Content length=0");
     http_send(client, header);
 }
 
@@ -600,6 +563,35 @@ static void http_extract_host(const char *request, char *host, size_t host_len)
     host[len] = '\0';
 }
 
+static void http_handle_connect_request(int client, const char *query)
+{
+    char ssid[33];
+    char manual_ssid[33];
+    char password[65];
+
+    query_value(query, "ssid", ssid, sizeof(ssid));
+    query_value(query, "manual_ssid", manual_ssid, sizeof(manual_ssid));
+    query_value(query, "pass", password, sizeof(password));
+
+    if (manual_ssid[0] != '\0') {
+        strncpy(ssid, manual_ssid, sizeof(ssid));
+        ssid[sizeof(ssid) - 1] = '\0';
+        WEB_LOG("manual ssid provided ssid=%s", ssid);
+    } else {
+        WEB_LOG("listed ssid selected ssid=%s", ssid);
+    }
+
+    if (ssid[0] != '\0') {
+        wifi_connect_to(ssid, password);
+    } else {
+        snprintf(wifi_status_message, sizeof(wifi_status_message),
+                 "SSID vide, connexion ignoree.");
+        WEB_LOG("wifi connect ignored empty ssid");
+    }
+
+    http_redirect(client, "/wifi");
+}
+
 static void http_handle_request(int client, char *request)
 {
     char path[384];
@@ -641,32 +633,7 @@ static void http_handle_request(int client, char *request)
         wifi_request_scan("manual");
         http_redirect(client, "/wifi");
     } else if (strncmp(path, "/connect?", 9) == 0) {
-        char ssid[33];
-        char manual_ssid[33];
-        char password[65];
-        const char *query = path + 9;
-
-        query_value(query, "ssid", ssid, sizeof(ssid));
-        query_value(query, "manual_ssid", manual_ssid, sizeof(manual_ssid));
-        query_value(query, "pass", password, sizeof(password));
-
-        if (manual_ssid[0] != '\0') {
-            strncpy(ssid, manual_ssid, sizeof(ssid));
-            ssid[sizeof(ssid) - 1] = '\0';
-            WEB_LOG("manual ssid provided ssid=%s", ssid);
-        } else {
-            WEB_LOG("listed ssid selected ssid=%s", ssid);
-        }
-
-        if (ssid[0] != '\0') {
-            wifi_connect_to(ssid, password);
-        } else {
-            snprintf(wifi_status_message, sizeof(wifi_status_message),
-                     "SSID vide, connexion ignoree.");
-            WEB_LOG("wifi connect ignored empty ssid");
-        }
-
-        http_redirect(client, "/wifi");
+        http_handle_connect_request(client, path + 9);
     } else if (strcmp(path, "/wifi") == 0) {
         WEB_LOG("wifi page requested status=%s count=%d running=%d",
                 station_status_text(), wifi_scan_count, wifi_scan_running);
@@ -698,6 +665,14 @@ static void http_handle_request(int client, char *request)
     }
 }
 
+static void http_close_client(int client)
+{
+    WEB_DEBUG_LOG("http client shutdown");
+    shutdown(client, SHUT_RDWR);
+    closesocket(client);
+    WEB_DEBUG_LOG("http client closed");
+}
+
 static int dns_question_end(const uint8_t *packet, int len)
 {
     int pos = 12;
@@ -719,7 +694,7 @@ void web_dns_server_task(void *arg)
 
     int server = socket(AF_INET, SOCK_DGRAM, 0);
     if (server < 0) {
-        os_printf("dns socket failed\n");
+        WEB_LOG("dns socket failed");
         vTaskDelete(NULL);
         return;
     }
@@ -731,7 +706,7 @@ void web_dns_server_task(void *arg)
     addr.sin_port = htons(DNS_PORT);
 
     if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        os_printf("dns bind failed\n");
+        WEB_LOG("dns bind failed");
         closesocket(server);
         vTaskDelete(NULL);
         return;
@@ -794,7 +769,7 @@ void web_http_server_task(void *arg)
 
     int server = socket(AF_INET, SOCK_STREAM, 0);
     if (server < 0) {
-        os_printf("http socket failed\n");
+        WEB_LOG("http socket failed");
         vTaskDelete(NULL);
         return;
     }
@@ -807,7 +782,7 @@ void web_http_server_task(void *arg)
 
     if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0 ||
         listen(server, 2) != 0) {
-        os_printf("http bind/listen failed\n");
+        WEB_LOG("http bind/listen failed");
         closesocket(server);
         vTaskDelete(NULL);
         return;
@@ -833,16 +808,13 @@ void web_http_server_task(void *arg)
             sscanf(request, "%7s %95s", method, path);
             char host[96];
             http_extract_host(request, host, sizeof(host));
-            WEB_LOG("http request method=%s host=%s path=%s", method, host, path);
+            WEB_DEBUG_LOG("http request method=%s host=%s path=%s", method, host, path);
             http_handle_request(client, request);
         } else {
-            WEB_LOG("http request empty recv=%d", n);
+            WEB_DEBUG_LOG("http request empty recv=%d", n);
         }
 
-        WEB_LOG("http client shutdown");
-        shutdown(client, SHUT_RDWR);
-        closesocket(client);
-        WEB_LOG("http client closed");
+        http_close_client(client);
     }
 }
 
@@ -859,10 +831,7 @@ void web_wifi_status_task(void *arg)
             WEB_LOG("wifi station status=%s", station_status_text());
             if (status == STATION_GOT_IP) {
                 wifi_disable_config_ap("station connected");
-            } else if (status == STATION_WRONG_PASSWORD ||
-                status == STATION_NO_AP_FOUND ||
-                status == STATION_CONNECT_FAIL ||
-                status == STATION_IDLE) {
+            } else if (station_status_needs_config_ap(status)) {
                 wifi_enable_config_ap("station not connected");
             }
             last_status = status;
