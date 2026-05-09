@@ -45,7 +45,7 @@ void user_init(void)
     os_printf("Laser Cat Toy ESP8266 RTOS start - pattern engine\n");
     os_printf("servo_h_gpio=%d servo_v_gpio=%d laser_gpio=%d\n",
               SERVO_HORIZONTAL_GPIO, SERVO_VERTICAL_GPIO, LASER_GPIO);
-    os_printf("config_ap_ssid=%s url=http://192.168.4.1/\n", CONFIG_AP_SSID);
+    os_printf("config_ap_ssid=%s path=/wifi\n", CONFIG_AP_SSID);
 
     xTaskCreate(hardware_servo_pwm_task, "servo_pwm", 384, NULL, 5, NULL);
     xTaskCreate(game_movement_task, "movement", 768, NULL, 3, NULL);

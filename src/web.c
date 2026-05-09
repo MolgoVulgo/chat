@@ -19,11 +19,6 @@
 #define WEB_LOG(fmt, ...)
 #endif
 
-#define STR_VALUE(x) #x
-#define STR(x) STR_VALUE(x)
-#define LOCAL_PORTAL_ORIGIN "http://" STR(CONFIG_AP_IP_A) "." STR(CONFIG_AP_IP_B) "." STR(CONFIG_AP_IP_C) "." STR(CONFIG_AP_IP_D)
-#define LOCAL_WIFI_URL LOCAL_PORTAL_ORIGIN "/wifi"
-
 typedef struct {
     char ssid[33];
     sint8 rssi;
@@ -40,6 +35,23 @@ static char http_body[4096];
 static struct scan_config wifi_scan_config;
 
 static void http_send_wifi(int client);
+
+static void wifi_enable_config_ap(const char *reason)
+{
+    wifi_set_opmode_current(STATIONAP_MODE);
+    wifi_softap_dhcps_start();
+    WEB_LOG("config ap enabled reason=%s", reason);
+}
+
+static void wifi_disable_config_ap(const char *reason)
+{
+    struct ip_info station_ip;
+    memset(&station_ip, 0, sizeof(station_ip));
+    wifi_get_ip_info(STATION_IF, &station_ip);
+    wifi_softap_dhcps_stop();
+    wifi_set_opmode_current(STATION_MODE);
+    WEB_LOG("config ap disabled reason=%s station_ip=%s", reason, ipaddr_ntoa(&station_ip.ip));
+}
 
 static bool wifi_scan_result_exists(const char *ssid)
 {
@@ -386,19 +398,20 @@ static void append_page_end(char *body, size_t body_len, size_t *used)
 static void http_send_home(int client)
 {
     size_t used = 0;
+    struct ip_info station_ip;
+    memset(&station_ip, 0, sizeof(station_ip));
+    wifi_get_ip_info(STATION_IF, &station_ip);
 
     http_body[0] = '\0';
     append_page_start(http_body, sizeof(http_body), &used, "Laser Cat Toy");
     appendf(http_body, sizeof(http_body), &used,
             "<p>Jouet: <strong>%s</strong></p>"
-            "<p>WiFi station: <strong>%s</strong></p>"
-            "<p class='muted'>%s</p>"
-            "<p><a href='" LOCAL_PORTAL_ORIGIN "/on'>ON</a>"
-            "<a class='off' href='" LOCAL_PORTAL_ORIGIN "/off'>OFF</a>"
-            "<a href='" LOCAL_WIFI_URL "'>Configurer WiFi</a></p>",
+            "<p>WiFi: <strong>%s</strong></p>"
+            "<p>IP: <strong>%s</strong></p>"
+            "<p><a href='/on'>ON</a><a class='off' href='/off'>OFF</a></p>",
             game_is_enabled() ? "ON" : "OFF",
             station_status_text(),
-            wifi_status_message);
+            ipaddr_ntoa(&station_ip.ip));
     append_page_end(http_body, sizeof(http_body), &used);
 
     WEB_LOG("home page served bytes=%d", (int)strlen(http_body));
@@ -415,7 +428,7 @@ static void http_send_captive(int client)
         "</head><body>"
         "<h1>LaserCatToy</h1>"
         "<p>Portail de configuration.</p>"
-        "<p><a href='" LOCAL_WIFI_URL "'>Ouvrir la configuration WiFi</a></p>"
+        "<p><a href='/wifi'>Ouvrir la configuration WiFi</a></p>"
         "</body></html>";
 
     http_send_response(client, "200 OK", "text/html; charset=utf-8", body);
@@ -423,7 +436,6 @@ static void http_send_captive(int client)
 
 static void http_send_wifi(int client)
 {
-    const char *toy = game_is_enabled() ? "ON" : "OFF";
     const char *scan_status;
 
     if (wifi_scan_running || wifi_scan_requested) {
@@ -436,25 +448,17 @@ static void http_send_wifi(int client)
 
     size_t used = 0;
     http_body[0] = '\0';
+    append_page_start(http_body, sizeof(http_body), &used, "Configuration WiFi");
     appendf(http_body, sizeof(http_body), &used,
-            "<!doctype html><html><head>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>Configuration WiFi</title>"
             "%s"
-            "</head><body>"
-            "<h1>Configuration WiFi</h1>"
-            "<p>Portail ESP OK.</p>"
-            "<p>Jouet: %s</p>"
+            "<p class='muted'>Portail ESP OK.</p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
-            "<p><a href='" LOCAL_PORTAL_ORIGIN "/on'>Jouet ON</a></p>"
-            "<p><a href='" LOCAL_PORTAL_ORIGIN "/off'>Jouet OFF</a></p>"
-            "<p><a href='" LOCAL_PORTAL_ORIGIN "/scan'>Scanner les reseaux</a></p>"
-            "<form action='" LOCAL_PORTAL_ORIGIN "/connect' method='get'>"
-            "<p><select name='ssid'>"
+            "<p><a href='/scan'>Scanner les reseaux</a></p>"
+            "<form action='/connect' method='get'>"
+            "<div class='field'><label>Reseau detecte</label><select name='ssid'>"
             "<option value=''>Selectionner un reseau</option>",
-            (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=" LOCAL_WIFI_URL "'>" : "",
-            toy,
+            (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=/wifi'>" : "",
             station_status_text(),
             scan_status);
 
@@ -470,13 +474,13 @@ static void http_send_wifi(int client)
     }
 
     appendf(http_body, sizeof(http_body), &used,
-            "</select></p>"
-            "<p><input name='manual_ssid' placeholder='SSID'></p>"
-            "<p><input name='pass' type='password' placeholder='Mot de passe'></p>"
-            "<p><button type='submit'>Connecter</button></p>"
+            "</select></div>"
+            "<div class='field'><label>SSID manuel</label><input name='manual_ssid' placeholder='SSID'></div>"
+            "<div class='field'><label>Mot de passe</label><input name='pass' type='password' placeholder='Mot de passe'></div>"
+            "<button type='submit'>Connecter</button>"
             "</form>"
-            "<p><a href='" LOCAL_WIFI_URL "'>Rafraichir</a></p>"
-            "</body></html>");
+            "<p><a href='/wifi'>Rafraichir</a></p>");
+    append_page_end(http_body, sizeof(http_body), &used);
 
     WEB_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
             (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
@@ -493,9 +497,9 @@ static void http_send_wifi_full(int client)
             "<p>AP de configuration: <strong>%s</strong></p>"
             "<p>Station: <strong>%s</strong></p>"
             "<p class='muted'>%s</p>"
-            "<p><a href='" LOCAL_PORTAL_ORIGIN "/scan'>Scanner les reseaux</a>"
-            "<a href='" LOCAL_WIFI_URL "'>Retour</a></p>"
-            "<form action='" LOCAL_PORTAL_ORIGIN "/connect' method='get'>"
+            "<p><a href='/scan'>Scanner les reseaux</a>"
+            "<a href='/wifi'>Retour</a></p>"
+            "<form action='/connect' method='get'>"
             "<div class='field'><label>Reseau detecte</label><select name='ssid'>",
             CONFIG_AP_SSID,
             station_status_text(),
@@ -545,12 +549,6 @@ static void http_send_no_content(int client)
 static void http_redirect(int client, const char *location)
 {
     char header[160];
-    char absolute[96];
-
-    if (location[0] == '/') {
-        snprintf(absolute, sizeof(absolute), LOCAL_PORTAL_ORIGIN "%s", location);
-        location = absolute;
-    }
 
     snprintf(header, sizeof(header),
              "HTTP/1.1 302 Found\r\n"
@@ -561,21 +559,6 @@ static void http_redirect(int client, const char *location)
              "\r\n",
              location);
     WEB_LOG("http redirect status=302 location=%s", location);
-    http_send(client, header);
-}
-
-static void http_redirect_local_portal(int client)
-{
-    char header[192];
-    snprintf(header, sizeof(header),
-             "HTTP/1.1 302 Found\r\n"
-             "Location: http://%d.%d.%d.%d/wifi\r\n"
-             "Content-Length: 0\r\n"
-             "Connection: close\r\n"
-             "Cache-Control: no-store\r\n"
-             "\r\n",
-             CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D);
-    WEB_LOG("http redirect status=302 location=" LOCAL_WIFI_URL);
     http_send(client, header);
 }
 
@@ -694,7 +677,12 @@ static void http_handle_request(int client, char *request)
     } else if (strcmp(path, "/") == 0) {
         WEB_LOG("root requested host=%s toy=%d station=%s",
                 host, game_is_enabled(), station_status_text());
-        http_send_wifi(client);
+        if (wifi_station_get_connect_status() == STATION_GOT_IP) {
+            http_send_home(client);
+        } else {
+            WEB_LOG("root redirected to wifi config station=%s", station_status_text());
+            http_redirect(client, "/wifi");
+        }
     } else if (strcmp(path, "/generate_204") == 0 ||
                strcmp(path, "/gen_204") == 0 ||
                strcmp(path, "/hotspot-detect.html") == 0 ||
@@ -825,7 +813,7 @@ void web_http_server_task(void *arg)
         return;
     }
 
-    WEB_LOG("http server ready url=http://192.168.4.1/");
+    WEB_LOG("http server ready path=/");
 
     while (true) {
         int client = accept(server, NULL, NULL);
@@ -869,6 +857,14 @@ void web_wifi_status_task(void *arg)
 
         if (status != last_status) {
             WEB_LOG("wifi station status=%s", station_status_text());
+            if (status == STATION_GOT_IP) {
+                wifi_disable_config_ap("station connected");
+            } else if (status == STATION_WRONG_PASSWORD ||
+                status == STATION_NO_AP_FOUND ||
+                status == STATION_CONNECT_FAIL ||
+                status == STATION_IDLE) {
+                wifi_enable_config_ap("station not connected");
+            }
             last_status = status;
         }
 
