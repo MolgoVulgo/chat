@@ -68,6 +68,20 @@
 
 #define SERIAL_BAUD_RATE        115200
 
+// -----------------------------------------------------------------------------
+// WiFi / Web UI
+// -----------------------------------------------------------------------------
+
+#define CONFIG_AP_SSID          "LaserCatToy"
+#define CONFIG_AP_PASSWORD      "lasercat123"
+#define HTTP_PORT               80
+#define DNS_PORT                53
+#define CONFIG_AP_IP_A          192
+#define CONFIG_AP_IP_B          168
+#define CONFIG_AP_IP_C          4
+#define CONFIG_AP_IP_D          1
+#define WIFI_SCAN_MAX_RESULTS   10
+
 void user_init(void);
 
 #endif
