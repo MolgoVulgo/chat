@@ -34,7 +34,7 @@ typedef struct {
     const pattern_step_t *steps;
 } pattern_t;
 
-static volatile bool toy_enabled = true;
+static volatile bool toy_enabled = false;
 static int16_t current_x = START_X;
 static int16_t current_y = START_Y;
 

@@ -5,10 +5,12 @@
 #include "main.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include "esp_common.h"
 #include "freertos/task.h"
+#include "lwip/ip4_addr.h"
 #include "lwip/sockets.h"
 
 #if WEB_LOG_ENABLED
@@ -17,18 +19,38 @@
 #define WEB_LOG(fmt, ...)
 #endif
 
+#define STR_VALUE(x) #x
+#define STR(x) STR_VALUE(x)
+#define LOCAL_PORTAL_ORIGIN "http://" STR(CONFIG_AP_IP_A) "." STR(CONFIG_AP_IP_B) "." STR(CONFIG_AP_IP_C) "." STR(CONFIG_AP_IP_D)
+#define LOCAL_WIFI_URL LOCAL_PORTAL_ORIGIN "/wifi"
+
 typedef struct {
     char ssid[33];
     sint8 rssi;
     AUTH_MODE authmode;
+    uint8 channel;
 } wifi_scan_result_t;
 
 static wifi_scan_result_t wifi_scan_results[WIFI_SCAN_MAX_RESULTS];
 static volatile uint8_t wifi_scan_count = 0;
 static volatile bool wifi_scan_running = false;
+static volatile bool wifi_scan_requested = false;
 static char wifi_status_message[96] = "Aucun reseau configure.";
+static char http_body[4096];
+static struct scan_config wifi_scan_config;
 
 static void http_send_wifi(int client);
+
+static bool wifi_scan_result_exists(const char *ssid)
+{
+    for (uint8_t i = 0; i < wifi_scan_count; i++) {
+        if (strcmp(wifi_scan_results[i].ssid, ssid) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static const char *station_status_text(void)
 {
@@ -55,31 +77,53 @@ static void wifi_scan_done_cb(void *arg, STATUS status)
     wifi_scan_count = 0;
     wifi_scan_running = false;
 
-    if (status != OK || arg == NULL) {
+    WEB_LOG("wifi scan done callback status=%d arg=%p", status, arg);
+
+    if (status != OK) {
         snprintf(wifi_status_message, sizeof(wifi_status_message),
                  "Scan WiFi echoue.");
         WEB_LOG("wifi scan failed status=%d", status);
         return;
     }
 
+    if (arg == NULL) {
+        snprintf(wifi_status_message, sizeof(wifi_status_message),
+                 "Aucun reseau detecte.");
+        WEB_LOG("wifi scan complete empty result list");
+        return;
+    }
+
     struct bss_info *bss = (struct bss_info *)arg;
     while (bss != NULL && wifi_scan_count < WIFI_SCAN_MAX_RESULTS) {
         uint8_t len = bss->ssid_len;
+        if (len == 0 && bss->ssid[0] != '\0') {
+            len = (uint8_t)strnlen((char *)bss->ssid, sizeof(bss->ssid));
+            WEB_LOG("scan ssid_len fallback len=%d", len);
+        }
         if (len > 32) {
             len = 32;
         }
+
+        WEB_LOG("raw scan result len=%d channel=%d rssi=%d auth=%d hidden=%d",
+                bss->ssid_len, bss->channel, bss->rssi, bss->authmode, bss->is_hidden);
 
         if (len > 0) {
             memset(&wifi_scan_results[wifi_scan_count], 0, sizeof(wifi_scan_results[0]));
             memcpy(wifi_scan_results[wifi_scan_count].ssid, bss->ssid, len);
             wifi_scan_results[wifi_scan_count].ssid[len] = '\0';
-            wifi_scan_results[wifi_scan_count].rssi = bss->rssi;
-            wifi_scan_results[wifi_scan_count].authmode = bss->authmode;
-            WEB_LOG("scan result ssid=%s rssi=%d auth=%d",
-                    wifi_scan_results[wifi_scan_count].ssid,
-                    wifi_scan_results[wifi_scan_count].rssi,
-                    wifi_scan_results[wifi_scan_count].authmode);
-            wifi_scan_count++;
+            if (!wifi_scan_result_exists(wifi_scan_results[wifi_scan_count].ssid)) {
+                wifi_scan_results[wifi_scan_count].rssi = bss->rssi;
+                wifi_scan_results[wifi_scan_count].authmode = bss->authmode;
+                wifi_scan_results[wifi_scan_count].channel = bss->channel;
+                WEB_LOG("scan result ssid=%s channel=%d rssi=%d auth=%d",
+                        wifi_scan_results[wifi_scan_count].ssid,
+                        wifi_scan_results[wifi_scan_count].channel,
+                        wifi_scan_results[wifi_scan_count].rssi,
+                        wifi_scan_results[wifi_scan_count].authmode);
+                wifi_scan_count++;
+            } else {
+                WEB_LOG("scan duplicate ignored ssid=%s", wifi_scan_results[wifi_scan_count].ssid);
+            }
         }
 
         bss = STAILQ_NEXT(bss, next);
@@ -97,23 +141,43 @@ static void wifi_start_scan(void)
         return;
     }
 
+    wifi_scan_requested = false;
     wifi_set_opmode_current(STATIONAP_MODE);
-
-    struct scan_config config;
-    memset(&config, 0, sizeof(config));
-    config.show_hidden = 0;
+    wifi_scan_count = 0;
+    memset(wifi_scan_results, 0, sizeof(wifi_scan_results));
+    memset(&wifi_scan_config, 0, sizeof(wifi_scan_config));
+    wifi_scan_config.ssid = NULL;
+    wifi_scan_config.bssid = NULL;
+    wifi_scan_config.channel = 0;
+    wifi_scan_config.show_hidden = 1;
 
     snprintf(wifi_status_message, sizeof(wifi_status_message),
              "Scan WiFi en cours...");
 
-    wifi_scan_running = wifi_station_scan(&config, wifi_scan_done_cb);
+    WEB_LOG("wifi scan start global channel=%d show_hidden=%d status=%s",
+            wifi_scan_config.channel, wifi_scan_config.show_hidden, station_status_text());
+    wifi_scan_running = wifi_station_scan(&wifi_scan_config, wifi_scan_done_cb);
     if (!wifi_scan_running) {
         snprintf(wifi_status_message, sizeof(wifi_status_message),
                  "Impossible de demarrer le scan WiFi.");
         WEB_LOG("wifi scan start failed");
     } else {
-        WEB_LOG("wifi scan started");
+        WEB_LOG("wifi scan started global");
     }
+}
+
+static void wifi_request_scan(const char *reason)
+{
+    if (wifi_scan_running || wifi_scan_requested) {
+        WEB_LOG("wifi scan request ignored reason=%s running=%d requested=%d",
+                reason, wifi_scan_running, wifi_scan_requested);
+        return;
+    }
+
+    snprintf(wifi_status_message, sizeof(wifi_status_message),
+             "Scan WiFi demande...");
+    wifi_scan_requested = true;
+    WEB_LOG("wifi scan requested reason=%s", reason);
 }
 
 static void wifi_connect_to(const char *ssid, const char *password)
@@ -210,171 +274,357 @@ static void http_send(int client, const char *s)
 {
     const char *p = s;
     int remaining = (int)strlen(s);
+    int total = remaining;
+    int written = 0;
 
     while (remaining > 0) {
         int sent = send(client, p, remaining, 0);
         if (sent <= 0) {
-            WEB_LOG("http send failed remaining=%d", remaining);
+            WEB_LOG("http send failed sent_total=%d expected=%d remaining=%d",
+                    written, total, remaining);
             return;
         }
 
         p += sent;
         remaining -= sent;
+        written += sent;
     }
+
+    WEB_LOG("http send complete bytes=%d", written);
 }
 
-static void http_send_header(int client, const char *status, const char *content_type)
+static void http_send_response(int client,
+                               const char *status,
+                               const char *content_type,
+                               const char *body)
 {
-    char header[160];
+    char header[192];
+    size_t body_len = strlen(body);
+
     snprintf(header, sizeof(header),
              "HTTP/1.1 %s\r\n"
              "Content-Type: %s\r\n"
+             "Content-Length: %d\r\n"
              "Connection: close\r\n"
              "Cache-Control: no-store\r\n"
              "\r\n",
-             status, content_type);
+             status, content_type, (int)body_len);
+
+    WEB_LOG("http response status=%s type=%s length=%d",
+            status, content_type, (int)body_len);
     http_send(client, header);
+    http_send(client, body);
 }
 
-static void html_escape_send(int client, const char *s)
+static void appendf(char *dst, size_t dst_len, size_t *used, const char *fmt, ...)
+{
+    if (*used >= dst_len) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(dst + *used, dst_len - *used, fmt, args);
+    va_end(args);
+
+    if (written < 0) {
+        return;
+    }
+    if ((size_t)written >= dst_len - *used) {
+        *used = dst_len - 1;
+    } else {
+        *used += (size_t)written;
+    }
+}
+
+static void append_escaped(char *dst, size_t dst_len, size_t *used, const char *s)
 {
     while (*s != '\0') {
         switch (*s) {
         case '&':
-            http_send(client, "&amp;");
+            appendf(dst, dst_len, used, "&amp;");
             break;
         case '<':
-            http_send(client, "&lt;");
+            appendf(dst, dst_len, used, "&lt;");
             break;
         case '>':
-            http_send(client, "&gt;");
+            appendf(dst, dst_len, used, "&gt;");
             break;
         case '"':
-            http_send(client, "&quot;");
+            appendf(dst, dst_len, used, "&quot;");
             break;
-        default: {
-            char c[2] = { *s, '\0' };
-            http_send(client, c);
+        default:
+            appendf(dst, dst_len, used, "%c", *s);
             break;
-        }
         }
         s++;
     }
 }
 
-static void http_send_page_start(int client, const char *title)
+static void append_page_start(char *body, size_t body_len, size_t *used, const char *title)
 {
-    http_send_header(client, "200 OK", "text/html; charset=utf-8");
-    http_send(client,
-              "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
-              "<title>");
-    html_escape_send(client, title);
-    http_send(client,
-              "</title><style>"
-              "body{font-family:Arial,sans-serif;margin:24px;max-width:720px;background:#f6f7f9;color:#15171a}"
-              "main{background:#fff;border:1px solid #d8dde3;border-radius:8px;padding:18px}"
-              "a,button{display:inline-block;margin:6px 6px 6px 0;padding:10px 14px;border-radius:6px;border:0;background:#1f6feb;color:#fff;text-decoration:none;font-size:16px}"
-              ".off{background:#b42318}.muted{color:#5b6470}.field{margin:12px 0}input,select{width:100%;box-sizing:border-box;padding:10px;font-size:16px}"
-              "</style></head><body><main>");
-    http_send(client, "<h1>");
-    html_escape_send(client, title);
-    http_send(client, "</h1>");
+    appendf(body, body_len, used,
+            "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>");
+    append_escaped(body, body_len, used, title);
+    appendf(body, body_len, used,
+            "</title><style>"
+            "body{font-family:Arial,sans-serif;margin:24px;max-width:720px;background:#f6f7f9;color:#15171a}"
+            "main{background:#fff;border:1px solid #d8dde3;border-radius:8px;padding:18px}"
+            "a,button{display:inline-block;margin:6px 6px 6px 0;padding:10px 14px;border-radius:6px;border:0;background:#1f6feb;color:#fff;text-decoration:none;font-size:16px}"
+            ".off{background:#b42318}.muted{color:#5b6470}.field{margin:12px 0}input,select{width:100%;box-sizing:border-box;padding:10px;font-size:16px}"
+            "</style></head><body><main><h1>");
+    append_escaped(body, body_len, used, title);
+    appendf(body, body_len, used, "</h1>");
 }
 
-static void http_send_page_end(int client)
+static void append_page_end(char *body, size_t body_len, size_t *used)
 {
-    http_send(client, "</main></body></html>");
+    appendf(body, body_len, used, "</main></body></html>");
 }
 
 static void http_send_home(int client)
 {
-    char buf[256];
+    size_t used = 0;
 
-    http_send_page_start(client, "Laser Cat Toy");
-    snprintf(buf, sizeof(buf),
-             "<p>Jouet: <strong>%s</strong></p>"
-             "<p>WiFi station: <strong>%s</strong></p>"
-             "<p class='muted'>%s</p>",
-             game_is_enabled() ? "ON" : "OFF",
-             station_status_text(),
-             wifi_status_message);
-    http_send(client, buf);
-    http_send(client, "<p><a href='/on'>ON</a><a class='off' href='/off'>OFF</a><a href='/wifi'>Configurer WiFi</a></p>");
-    http_send_page_end(client);
+    http_body[0] = '\0';
+    append_page_start(http_body, sizeof(http_body), &used, "Laser Cat Toy");
+    appendf(http_body, sizeof(http_body), &used,
+            "<p>Jouet: <strong>%s</strong></p>"
+            "<p>WiFi station: <strong>%s</strong></p>"
+            "<p class='muted'>%s</p>"
+            "<p><a href='" LOCAL_PORTAL_ORIGIN "/on'>ON</a>"
+            "<a class='off' href='" LOCAL_PORTAL_ORIGIN "/off'>OFF</a>"
+            "<a href='" LOCAL_WIFI_URL "'>Configurer WiFi</a></p>",
+            game_is_enabled() ? "ON" : "OFF",
+            station_status_text(),
+            wifi_status_message);
+    append_page_end(http_body, sizeof(http_body), &used);
+
+    WEB_LOG("home page served bytes=%d", (int)strlen(http_body));
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
 }
 
 static void http_send_captive(int client)
 {
     WEB_LOG("captive page served");
-    http_send_wifi(client);
+    const char *body =
+        "<!doctype html><html><head>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>LaserCatToy</title>"
+        "</head><body>"
+        "<h1>LaserCatToy</h1>"
+        "<p>Portail de configuration.</p>"
+        "<p><a href='" LOCAL_WIFI_URL "'>Ouvrir la configuration WiFi</a></p>"
+        "</body></html>";
+
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", body);
 }
 
 static void http_send_wifi(int client)
 {
-    char buf[256];
+    const char *toy = game_is_enabled() ? "ON" : "OFF";
+    const char *scan_status;
 
-    if (wifi_scan_count == 0 && !wifi_scan_running) {
-        WEB_LOG("wifi page opened without scan results, auto scan");
-        wifi_start_scan();
-    }
-
-    http_send_page_start(client, "Configuration WiFi");
-    if (wifi_scan_running) {
-        http_send(client, "<script>setTimeout(function(){location.href='/wifi'},2000)</script>");
-    }
-    snprintf(buf, sizeof(buf),
-             "<p>AP de configuration: <strong>%s</strong></p>"
-             "<p>Station: <strong>%s</strong></p>"
-             "<p class='muted'>%s</p>",
-             CONFIG_AP_SSID,
-             station_status_text(),
-             wifi_status_message);
-    http_send(client, buf);
-    http_send(client, "<p><a href='/scan'>Rescanner</a><a href='/'>Retour</a></p>");
-    http_send(client, "<form action='/connect' method='get'>");
-    http_send(client, "<div class='field'><label>Reseau detecte</label><select name='ssid'>");
-
-    if (wifi_scan_running) {
-        http_send(client, "<option value=''>Scan en cours...</option>");
+    if (wifi_scan_running || wifi_scan_requested) {
+        scan_status = "Scan en cours";
     } else if (wifi_scan_count == 0) {
-        http_send(client, "<option value=''>Aucun reseau scanne</option>");
+        scan_status = "Aucun reseau scanne";
+    } else {
+        scan_status = "Scan termine";
+    }
+
+    size_t used = 0;
+    http_body[0] = '\0';
+    appendf(http_body, sizeof(http_body), &used,
+            "<!doctype html><html><head>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Configuration WiFi</title>"
+            "%s"
+            "</head><body>"
+            "<h1>Configuration WiFi</h1>"
+            "<p>Portail ESP OK.</p>"
+            "<p>Jouet: %s</p>"
+            "<p>Station: %s</p>"
+            "<p>Scan: %s</p>"
+            "<p><a href='" LOCAL_PORTAL_ORIGIN "/on'>Jouet ON</a></p>"
+            "<p><a href='" LOCAL_PORTAL_ORIGIN "/off'>Jouet OFF</a></p>"
+            "<p><a href='" LOCAL_PORTAL_ORIGIN "/scan'>Scanner les reseaux</a></p>"
+            "<form action='" LOCAL_PORTAL_ORIGIN "/connect' method='get'>"
+            "<p><select name='ssid'>"
+            "<option value=''>Selectionner un reseau</option>",
+            (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=" LOCAL_WIFI_URL "'>" : "",
+            toy,
+            station_status_text(),
+            scan_status);
+
+    for (uint8_t i = 0; i < wifi_scan_count; i++) {
+        WEB_LOG("wifi page option ssid=%s channel=%d rssi=%d",
+                wifi_scan_results[i].ssid, wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
+        appendf(http_body, sizeof(http_body), &used, "<option value=\"");
+        append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
+        appendf(http_body, sizeof(http_body), &used, "\">");
+        append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
+        appendf(http_body, sizeof(http_body), &used, " (ch %d, %d dBm)</option>",
+                wifi_scan_results[i].channel, wifi_scan_results[i].rssi);
+    }
+
+    appendf(http_body, sizeof(http_body), &used,
+            "</select></p>"
+            "<p><input name='manual_ssid' placeholder='SSID'></p>"
+            "<p><input name='pass' type='password' placeholder='Mot de passe'></p>"
+            "<p><button type='submit'>Connecter</button></p>"
+            "</form>"
+            "<p><a href='" LOCAL_WIFI_URL "'>Rafraichir</a></p>"
+            "</body></html>");
+
+    WEB_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
+            (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static void http_send_wifi_full(int client)
+{
+    size_t used = 0;
+
+    http_body[0] = '\0';
+    append_page_start(http_body, sizeof(http_body), &used, "Configuration WiFi");
+    appendf(http_body, sizeof(http_body), &used,
+            "<p>AP de configuration: <strong>%s</strong></p>"
+            "<p>Station: <strong>%s</strong></p>"
+            "<p class='muted'>%s</p>"
+            "<p><a href='" LOCAL_PORTAL_ORIGIN "/scan'>Scanner les reseaux</a>"
+            "<a href='" LOCAL_WIFI_URL "'>Retour</a></p>"
+            "<form action='" LOCAL_PORTAL_ORIGIN "/connect' method='get'>"
+            "<div class='field'><label>Reseau detecte</label><select name='ssid'>",
+            CONFIG_AP_SSID,
+            station_status_text(),
+            wifi_status_message);
+
+    if (wifi_scan_running) {
+        appendf(http_body, sizeof(http_body), &used, "<option value=''>Scan en cours...</option>");
+    } else if (wifi_scan_count == 0) {
+        appendf(http_body, sizeof(http_body), &used, "<option value=''>Aucun reseau scanne</option>");
     } else {
         for (uint8_t i = 0; i < wifi_scan_count; i++) {
-            http_send(client, "<option value=\"");
-            html_escape_send(client, wifi_scan_results[i].ssid);
-            http_send(client, "\">");
-            html_escape_send(client, wifi_scan_results[i].ssid);
-            snprintf(buf, sizeof(buf), " (%d dBm)%s</option>",
-                     wifi_scan_results[i].rssi,
-                     wifi_scan_results[i].authmode == AUTH_OPEN ? " ouvert" : "");
-            http_send(client, buf);
+            appendf(http_body, sizeof(http_body), &used, "<option value=\"");
+            append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
+            appendf(http_body, sizeof(http_body), &used, "\">");
+            append_escaped(http_body, sizeof(http_body), &used, wifi_scan_results[i].ssid);
+            appendf(http_body, sizeof(http_body), &used, " (%d dBm)%s</option>",
+                    wifi_scan_results[i].rssi,
+                    wifi_scan_results[i].authmode == AUTH_OPEN ? " ouvert" : "");
         }
     }
 
-    http_send(client, "</select></div>");
-    http_send(client, "<div class='field'><label>Ou SSID manuel</label><input name='manual_ssid'></div>");
-    http_send(client, "<div class='field'><label>Mot de passe</label><input name='pass' type='password'></div>");
-    http_send(client, "<button type='submit'>Connecter</button></form>");
-    http_send_page_end(client);
+    appendf(http_body, sizeof(http_body), &used,
+            "</select></div>"
+            "<div class='field'><label>Ou SSID manuel</label><input name='manual_ssid'></div>"
+            "<div class='field'><label>Mot de passe</label><input name='pass' type='password'></div>"
+            "<button type='submit'>Connecter</button></form>");
+    append_page_end(http_body, sizeof(http_body), &used);
+
+    WEB_LOG("wifi full page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
+            (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static void http_send_no_content(int client)
+{
+    const char *header =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n"
+        "\r\n";
+
+    WEB_LOG("http response status=204 No Content length=0");
+    http_send(client, header);
 }
 
 static void http_redirect(int client, const char *location)
 {
     char header[160];
+    char absolute[96];
+
+    if (location[0] == '/') {
+        snprintf(absolute, sizeof(absolute), LOCAL_PORTAL_ORIGIN "%s", location);
+        location = absolute;
+    }
+
     snprintf(header, sizeof(header),
-             "HTTP/1.1 303 See Other\r\n"
+             "HTTP/1.1 302 Found\r\n"
              "Location: %s\r\n"
+             "Content-Length: 0\r\n"
              "Connection: close\r\n"
+             "Cache-Control: no-store\r\n"
              "\r\n",
              location);
+    WEB_LOG("http redirect status=302 location=%s", location);
     http_send(client, header);
+}
+
+static void http_redirect_local_portal(int client)
+{
+    char header[192];
+    snprintf(header, sizeof(header),
+             "HTTP/1.1 302 Found\r\n"
+             "Location: http://%d.%d.%d.%d/wifi\r\n"
+             "Content-Length: 0\r\n"
+             "Connection: close\r\n"
+             "Cache-Control: no-store\r\n"
+             "\r\n",
+             CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D);
+    WEB_LOG("http redirect status=302 location=" LOCAL_WIFI_URL);
+    http_send(client, header);
+}
+
+static void http_extract_host(const char *request, char *host, size_t host_len)
+{
+    const char *p = strstr(request, "\nHost:");
+    if (p == NULL) {
+        p = strstr(request, "\nhost:");
+    }
+
+    if (host_len == 0) {
+        return;
+    }
+    host[0] = '\0';
+
+    if (p == NULL) {
+        return;
+    }
+
+    p += 6;
+    while (*p == ' ') {
+        p++;
+    }
+
+    const char *end = strchr(p, '\r');
+    if (end == NULL) {
+        end = strchr(p, '\n');
+    }
+    if (end == NULL) {
+        end = p + strlen(p);
+    }
+
+    size_t len = (size_t)(end - p);
+    if (len >= host_len) {
+        len = host_len - 1;
+    }
+
+    memcpy(host, p, len);
+    host[len] = '\0';
 }
 
 static void http_handle_request(int client, char *request)
 {
     char path[384];
+    char host[96];
     char *start = strchr(request, ' ');
     char *end;
+
+    http_extract_host(request, host, sizeof(host));
 
     if (start == NULL) {
         http_send_captive(client);
@@ -405,7 +655,7 @@ static void http_handle_request(int client, char *request)
         http_redirect(client, "/");
     } else if (strcmp(path, "/scan") == 0) {
         WEB_LOG("manual wifi scan requested");
-        wifi_start_scan();
+        wifi_request_scan("manual");
         http_redirect(client, "/wifi");
     } else if (strncmp(path, "/connect?", 9) == 0) {
         char ssid[33];
@@ -438,10 +688,13 @@ static void http_handle_request(int client, char *request)
         WEB_LOG("wifi page requested status=%s count=%d running=%d",
                 station_status_text(), wifi_scan_count, wifi_scan_running);
         http_send_wifi(client);
+    } else if (strcmp(path, "/favicon.ico") == 0) {
+        WEB_LOG("favicon ignored");
+        http_send_no_content(client);
     } else if (strcmp(path, "/") == 0) {
-        WEB_LOG("home page requested toy=%d station=%s",
-                game_is_enabled(), station_status_text());
-        http_send_home(client);
+        WEB_LOG("root requested host=%s toy=%d station=%s",
+                host, game_is_enabled(), station_status_text());
+        http_send_wifi(client);
     } else if (strcmp(path, "/generate_204") == 0 ||
                strcmp(path, "/gen_204") == 0 ||
                strcmp(path, "/hotspot-detect.html") == 0 ||
@@ -449,10 +702,10 @@ static void http_handle_request(int client, char *request)
                strcmp(path, "/ncsi.txt") == 0 ||
                strcmp(path, "/connecttest.txt") == 0 ||
                strcmp(path, "/redirect") == 0) {
-        WEB_LOG("captive probe path=%s", path);
+        WEB_LOG("captive probe host=%s path=%s -> serve captive landing", host, path);
         http_send_captive(client);
     } else {
-        WEB_LOG("unknown path served as captive path=%s", path);
+        WEB_LOG("unknown path served as captive host=%s path=%s", host, path);
         http_send_captive(client);
     }
 }
@@ -590,11 +843,18 @@ void web_http_server_task(void *arg)
             method[0] = '\0';
             path[0] = '\0';
             sscanf(request, "%7s %95s", method, path);
-            WEB_LOG("http request method=%s path=%s", method, path);
+            char host[96];
+            http_extract_host(request, host, sizeof(host));
+            WEB_LOG("http request method=%s host=%s path=%s", method, host, path);
             http_handle_request(client, request);
+        } else {
+            WEB_LOG("http request empty recv=%d", n);
         }
 
+        WEB_LOG("http client shutdown");
+        shutdown(client, SHUT_RDWR);
         closesocket(client);
+        WEB_LOG("http client closed");
     }
 }
 
@@ -612,6 +872,11 @@ void web_wifi_status_task(void *arg)
             last_status = status;
         }
 
+        if (wifi_scan_requested && !wifi_scan_running) {
+            wifi_scan_requested = false;
+            wifi_start_scan();
+        }
+
         vTaskDelay(ms_to_ticks_min1(1000));
     }
 }
@@ -622,6 +887,19 @@ void web_portal_init(void)
     wifi_set_opmode_current(STATIONAP_MODE);
     wifi_station_set_auto_connect(true);
     wifi_station_set_reconnect_policy(true);
+    wifi_softap_dhcps_stop();
+
+    struct ip_info ap_ip;
+    IP4_ADDR(&ap_ip.ip, CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D);
+    IP4_ADDR(&ap_ip.gw, CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D);
+    IP4_ADDR(&ap_ip.netmask, 255, 255, 255, 0);
+
+    if (wifi_set_ip_info(SOFTAP_IF, &ap_ip)) {
+        WEB_LOG("softap ip configured ip=%d.%d.%d.%d",
+                CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D);
+    } else {
+        WEB_LOG("softap ip configure failed");
+    }
 
     struct softap_config ap_config;
     memset(&ap_config, 0, sizeof(ap_config));
@@ -636,8 +914,12 @@ void web_portal_init(void)
 
     wifi_softap_set_config_current(&ap_config);
     wifi_softap_dhcps_start();
-    WEB_LOG("config ap ready ssid=%s ip=%d.%d.%d.%d http_port=%d dns_port=%d",
+    struct ip_info actual_ip;
+    memset(&actual_ip, 0, sizeof(actual_ip));
+    wifi_get_ip_info(SOFTAP_IF, &actual_ip);
+    WEB_LOG("config ap ready ssid=%s ip=%d.%d.%d.%d actual_ip=%s http_port=%d dns_port=%d",
             CONFIG_AP_SSID,
             CONFIG_AP_IP_A, CONFIG_AP_IP_B, CONFIG_AP_IP_C, CONFIG_AP_IP_D,
+            ipaddr_ntoa(&actual_ip.ip),
             HTTP_PORT, DNS_PORT);
 }

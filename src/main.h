@@ -80,7 +80,7 @@
 #define CONFIG_AP_IP_B          168
 #define CONFIG_AP_IP_C          4
 #define CONFIG_AP_IP_D          1
-#define WIFI_SCAN_MAX_RESULTS   10
+#define WIFI_SCAN_MAX_RESULTS   24
 
 void user_init(void);
 
