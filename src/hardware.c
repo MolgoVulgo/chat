@@ -1,6 +1,7 @@
 #include "hardware.h"
 
 #include "app_util.h"
+#include "logging.h"
 #include "main.h"
 
 #include "esp_common.h"
@@ -9,7 +10,13 @@
 
 static volatile int servo_h_pos = 90;
 static volatile int servo_v_pos = 90;
+static volatile bool servo_enabled = false;
 static volatile bool laser_on = false;
+
+static uint8_t laser_gpio_level(bool enabled)
+{
+    return enabled ? (LASER_ACTIVE_LOW ? 0 : 1) : (LASER_ACTIVE_LOW ? 1 : 0);
+}
 
 static int coord_to_angle(int16_t coord, int min_angle, int max_angle, int invert)
 {
@@ -86,19 +93,48 @@ static void gpio_output_init(uint8_t gpio)
     GPIO_OUTPUT_SET(gpio, 0);
 }
 
+void hardware_laser_init_safe_state(void)
+{
+    gpio_output_init(LASER_GPIO);
+    GPIO_OUTPUT_SET(LASER_GPIO, laser_gpio_level(false));
+    laser_on = false;
+    HARDWARE_LOG("laser safe init gpio=%d active_low=%d level=%d",
+                 LASER_GPIO, LASER_ACTIVE_LOW, laser_gpio_level(false));
+}
+
 void hardware_laser_set(bool enabled)
 {
     laser_on = enabled;
-    GPIO_OUTPUT_SET(LASER_GPIO, enabled ? 1 : 0);
+    GPIO_OUTPUT_SET(LASER_GPIO, laser_gpio_level(enabled));
+    HARDWARE_LOG("laser gpio=%d requested=%s active_low=%d level=%d",
+                 LASER_GPIO,
+                 enabled ? "ON" : "OFF",
+                 LASER_ACTIVE_LOW,
+                 laser_gpio_level(enabled));
+}
+
+bool hardware_laser_is_on(void)
+{
+    return laser_on;
+}
+
+void hardware_servo_set_enabled(bool enabled)
+{
+    servo_enabled = enabled;
+    if (!enabled) {
+        GPIO_OUTPUT_SET(SERVO_HORIZONTAL_GPIO, 0);
+        GPIO_OUTPUT_SET(SERVO_VERTICAL_GPIO, 0);
+    }
 }
 
 void hardware_init(void)
 {
     gpio_output_init(SERVO_HORIZONTAL_GPIO);
     gpio_output_init(SERVO_VERTICAL_GPIO);
-    gpio_output_init(LASER_GPIO);
+    hardware_laser_init_safe_state();
 
     hardware_reset_position();
+    hardware_servo_set_enabled(false);
     hardware_laser_set(false);
 }
 
@@ -109,6 +145,13 @@ void hardware_servo_pwm_task(void *arg)
     portTickType last_wake = xTaskGetTickCount();
 
     while (true) {
+        if (!servo_enabled) {
+            GPIO_OUTPUT_SET(SERVO_HORIZONTAL_GPIO, 0);
+            GPIO_OUTPUT_SET(SERVO_VERTICAL_GPIO, 0);
+            vTaskDelayUntil(&last_wake, ms_to_ticks_min1(SERVO_PERIOD_MS));
+            continue;
+        }
+
         uint32_t h_us = servo_angle_to_us(servo_h_pos);
         uint32_t v_us = servo_angle_to_us(servo_v_pos);
 

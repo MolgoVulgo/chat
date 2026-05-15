@@ -2,12 +2,15 @@
 
 #include "app_util.h"
 #include "game.h"
+#include "hardware.h"
 #include "logging.h"
 #include "main.h"
+#include "ota.h"
 
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_common.h"
 #include "freertos/task.h"
@@ -30,6 +33,8 @@ static char http_body[4096];
 static struct scan_config wifi_scan_config;
 
 static void http_send_wifi(int client);
+static void http_send_ota(int client);
+static void http_handle_ota_upload(int client, const char *request, int request_len);
 
 static bool station_status_needs_config_ap(STATION_STATUS status)
 {
@@ -434,10 +439,13 @@ static void http_send_home(int client)
     append_page_start(http_body, sizeof(http_body), &used, "Laser Cat Toy");
     appendf(http_body, sizeof(http_body), &used,
             "<p>Jouet: <strong>%s</strong></p>"
+            "<p>Laser: <strong>%s</strong></p>"
             "<p>WiFi: <strong>%s</strong></p>"
             "<p>IP: <strong>%s</strong></p>"
-            "<p><a href='/on'>ON</a><a class='off' href='/off'>OFF</a></p>",
+            "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/ota'>OTA</a></p>",
             game_is_enabled() ? "ON" : "OFF",
+            hardware_laser_is_on() ? "ON" : "OFF",
             station_status_text(),
             ipaddr_ntoa(&station_ip.ip));
     append_page_end(http_body, sizeof(http_body), &used);
@@ -470,6 +478,10 @@ static void http_send_wifi(int client)
     appendf(http_body, sizeof(http_body), &used,
             "%s"
             "<p class='muted'>Portail ESP OK.</p>"
+            "<p>Jouet: <strong>%s</strong></p>"
+            "<p>Laser: <strong>%s</strong></p>"
+            "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a></p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
             "<p><a href='/scan'>Scanner les reseaux</a></p>"
@@ -477,6 +489,8 @@ static void http_send_wifi(int client)
             "<div class='field'><label>Reseau detecte</label><select name='ssid'>"
             "<option value=''>Selectionner un reseau</option>",
             (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=/wifi'>" : "",
+            game_is_enabled() ? "ON" : "OFF",
+            hardware_laser_is_on() ? "ON" : "OFF",
             station_status_text(),
             scan_status_text());
 
@@ -488,12 +502,62 @@ static void http_send_wifi(int client)
             "<div class='field'><label>Mot de passe</label><input name='pass' type='password' placeholder='Mot de passe'></div>"
             "<button type='submit'>Connecter</button>"
             "</form>"
-            "<p><a href='/wifi'>Rafraichir</a></p>");
+            "<p><a href='/wifi'>Rafraichir</a><a href='/ota'>OTA</a></p>");
     append_page_end(http_body, sizeof(http_body), &used);
 
     WEB_DEBUG_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
             (int)strlen(http_body), wifi_scan_count, wifi_scan_running, wifi_scan_requested);
     http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static void http_send_ota(int client)
+{
+    size_t used = 0;
+    http_body[0] = '\0';
+    append_page_start(http_body, sizeof(http_body), &used, "Mise a jour OTA");
+    appendf(http_body, sizeof(http_body), &used,
+            "<p>Etat: <strong>");
+    append_escaped(http_body, sizeof(http_body), &used, ota_get_status_text());
+    appendf(http_body, sizeof(http_body), &used,
+            "</strong></p>"
+            "<p>Firmware actif: <strong>%s</strong></p>"
+            "<p>Fichier attendu: <strong>%s</strong></p>"
+            "<p>Progression: %u / %u octets</p>"
+            "<div class='field'><input id='fw' type='file' accept='.bin,application/octet-stream'></div>"
+            "<button id='upload' type='button'>Envoyer</button>"
+            "<p id='result' class='muted'></p>"
+            "<p><a href='/'>Accueil</a><a href='/ota'>Rafraichir</a></p>"
+            "<script>"
+            "const f=document.getElementById('fw'),r=document.getElementById('result');"
+            "document.getElementById('upload').onclick=async()=>{"
+            "if(!f.files.length){r.textContent='Selectionner un fichier .bin';return;}"
+            "r.textContent='Envoi en cours...';"
+            "try{const x=await fetch('/ota/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f.files[0]});"
+            "r.textContent=await x.text();}catch(e){r.textContent='Echec upload';}"
+            "};"
+            "</script>",
+            ota_get_running_bin_name(),
+            ota_get_expected_upload_bin_name(),
+            (unsigned)ota_get_received_bytes(),
+            (unsigned)ota_get_expected_bytes());
+    append_page_end(http_body, sizeof(http_body), &used);
+
+    WEB_DEBUG_LOG("ota page served bytes=%d", (int)strlen(http_body));
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static void http_send_ota_status(int client)
+{
+    char body[256];
+    snprintf(body, sizeof(body),
+             "state=%d\nstatus=%s\nrunning=%s\nexpected_upload=%s\nreceived=%u\nexpected=%u\n",
+             ota_get_state(),
+             ota_get_status_text(),
+             ota_get_running_bin_name(),
+             ota_get_expected_upload_bin_name(),
+             (unsigned)ota_get_received_bytes(),
+             (unsigned)ota_get_expected_bytes());
+    http_send_response(client, "200 OK", "text/plain; charset=utf-8", body);
 }
 
 static void http_send_no_content(int client)
@@ -592,14 +656,135 @@ static void http_handle_connect_request(int client, const char *query)
     http_redirect(client, "/wifi");
 }
 
-static void http_handle_request(int client, char *request)
+static const char *http_find_header_value(const char *request, const char *name)
+{
+    size_t name_len = strlen(name);
+    const char *p = request;
+
+    while ((p = strchr(p, '\n')) != NULL) {
+        p++;
+        if (strncasecmp(p, name, name_len) == 0 && p[name_len] == ':') {
+            p += name_len + 1;
+            while (*p == ' ') {
+                p++;
+            }
+            return p;
+        }
+    }
+
+    return NULL;
+}
+
+static bool http_content_length(const char *request, uint32_t *content_length)
+{
+    const char *value = http_find_header_value(request, "Content-Length");
+    uint32_t parsed = 0;
+
+    if (value == NULL || *value < '0' || *value > '9') {
+        return false;
+    }
+
+    while (*value >= '0' && *value <= '9') {
+        parsed = (parsed * 10u) + (uint32_t)(*value - '0');
+        value++;
+    }
+
+    *content_length = parsed;
+    return true;
+}
+
+static int http_header_body_offset(const char *request, int request_len)
+{
+    for (int i = 0; i + 3 < request_len; i++) {
+        if (request[i] == '\r' && request[i + 1] == '\n' &&
+            request[i + 2] == '\r' && request[i + 3] == '\n') {
+            return i + 4;
+        }
+    }
+
+    return -1;
+}
+
+static void http_handle_ota_upload(int client, const char *request, int request_len)
+{
+    uint32_t content_length = 0;
+    int body_offset = http_header_body_offset(request, request_len);
+
+    if (body_offset < 0 || !http_content_length(request, &content_length)) {
+        WEB_LOG("ota upload rejected invalid headers");
+        http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8",
+                           "Headers OTA invalides.\n");
+        return;
+    }
+
+    if (!ota_begin_update(content_length)) {
+        http_send_response(client, "409 Conflict", "text/plain; charset=utf-8",
+                           ota_get_status_text());
+        return;
+    }
+
+    int initial_body_len = request_len - body_offset;
+    if (initial_body_len > 0) {
+        if (!ota_write_chunk((const uint8_t *)request + body_offset,
+                             (uint32_t)initial_body_len)) {
+            http_send_response(client, "500 Internal Server Error", "text/plain; charset=utf-8",
+                               ota_get_status_text());
+            return;
+        }
+    }
+
+    uint8_t buffer[1024];
+    while (ota_get_received_bytes() < content_length) {
+        uint32_t remaining = content_length - ota_get_received_bytes();
+        int to_read = remaining > sizeof(buffer) ? (int)sizeof(buffer) : (int)remaining;
+        int n = recv(client, buffer, to_read, 0);
+        if (n <= 0) {
+            ota_fail_update("Connexion fermee pendant OTA.");
+            http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8",
+                               ota_get_status_text());
+            return;
+        }
+
+        if (!ota_write_chunk(buffer, (uint32_t)n)) {
+            http_send_response(client, "500 Internal Server Error", "text/plain; charset=utf-8",
+                               ota_get_status_text());
+            return;
+        }
+    }
+
+    if (!ota_finish_update()) {
+        http_send_response(client, "500 Internal Server Error", "text/plain; charset=utf-8",
+                           ota_get_status_text());
+        return;
+    }
+
+    http_send_response(client, "200 OK", "text/plain; charset=utf-8",
+                       "OTA recue. Redemarrage en cours.\n");
+}
+
+static bool http_reject_when_ota_running(int client)
+{
+    if (!ota_is_running()) {
+        return false;
+    }
+
+    WEB_LOG("request rejected during ota");
+    http_send_response(client, "423 Locked", "text/plain; charset=utf-8",
+                       "OTA en cours.\n");
+    return true;
+}
+
+static void http_handle_request(int client, char *request, int request_len)
 {
     char path[384];
+    char method[8];
     char host[96];
     char *start = strchr(request, ' ');
     char *end;
 
     http_extract_host(request, host, sizeof(host));
+    method[0] = '\0';
+    sscanf(request, "%7s", method);
 
     if (start == NULL) {
         http_send_captive(client);
@@ -620,20 +805,56 @@ static void http_handle_request(int client, char *request)
     memcpy(path, start, len);
     path[len] = '\0';
 
-    if (strcmp(path, "/on") == 0) {
+    if (strcmp(method, "POST") == 0 && strcmp(path, "/ota/upload") == 0) {
+        WEB_LOG("ota upload requested");
+        http_handle_ota_upload(client, request, request_len);
+    } else if (strcmp(path, "/on") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
         game_set_enabled(true);
         WEB_LOG("toy enabled from web");
         http_redirect(client, "/");
     } else if (strcmp(path, "/off") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
         game_set_enabled(false);
         WEB_LOG("toy disabled from web");
         http_redirect(client, "/");
+    } else if (strcmp(path, "/laser/on") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_set_enabled(false);
+        hardware_laser_set(true);
+        WEB_LOG("laser enabled from web");
+        http_redirect(client, "/");
+    } else if (strcmp(path, "/laser/off") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_set_enabled(false);
+        hardware_laser_set(false);
+        WEB_LOG("laser disabled from web");
+        http_redirect(client, "/");
     } else if (strcmp(path, "/scan") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
         WEB_LOG("manual wifi scan requested");
         wifi_request_scan("manual");
         http_redirect(client, "/wifi");
     } else if (strncmp(path, "/connect?", 9) == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
         http_handle_connect_request(client, path + 9);
+    } else if (strcmp(path, "/ota") == 0) {
+        WEB_LOG("ota page requested state=%d", ota_get_state());
+        http_send_ota(client);
+    } else if (strcmp(path, "/ota/status") == 0) {
+        http_send_ota_status(client);
     } else if (strcmp(path, "/wifi") == 0) {
         WEB_LOG("wifi page requested status=%s count=%d running=%d",
                 station_status_text(), wifi_scan_count, wifi_scan_running);
@@ -797,7 +1018,7 @@ void web_http_server_task(void *arg)
             continue;
         }
 
-        char request[512];
+        char request[1024];
         int n = recv(client, request, sizeof(request) - 1, 0);
         if (n > 0) {
             request[n] = '\0';
@@ -809,7 +1030,7 @@ void web_http_server_task(void *arg)
             char host[96];
             http_extract_host(request, host, sizeof(host));
             WEB_DEBUG_LOG("http request method=%s host=%s path=%s", method, host, path);
-            http_handle_request(client, request);
+            http_handle_request(client, request, n);
         } else {
             WEB_DEBUG_LOG("http request empty recv=%d", n);
         }

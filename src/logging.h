@@ -11,12 +11,20 @@
 #define PATTERN_LOG_ENABLED 0
 #endif
 
+#ifndef HARDWARE_LOG_ENABLED
+#define HARDWARE_LOG_ENABLED 0
+#endif
+
 #ifndef WEB_LOG_ENABLED
 #define WEB_LOG_ENABLED 0
 #endif
 
 #ifndef WEB_DEBUG_LOG_ENABLED
 #define WEB_DEBUG_LOG_ENABLED 0
+#endif
+
+#ifndef OTA_LOG_ENABLED
+#define OTA_LOG_ENABLED 0
 #endif
 
 #if APP_LOG_ENABLED
@@ -31,6 +39,12 @@
 #define PATTERN_LOG(fmt, ...)
 #endif
 
+#if HARDWARE_LOG_ENABLED
+#define HARDWARE_LOG(fmt, ...) os_printf("[hw] " fmt "\n", ##__VA_ARGS__)
+#else
+#define HARDWARE_LOG(fmt, ...)
+#endif
+
 #if WEB_LOG_ENABLED
 #define WEB_LOG(fmt, ...) os_printf("[web] " fmt "\n", ##__VA_ARGS__)
 #else
@@ -41,6 +55,12 @@
 #define WEB_DEBUG_LOG(fmt, ...) os_printf("[web:debug] " fmt "\n", ##__VA_ARGS__)
 #else
 #define WEB_DEBUG_LOG(fmt, ...)
+#endif
+
+#if OTA_LOG_ENABLED
+#define OTA_LOG(fmt, ...) os_printf("[ota] " fmt "\n", ##__VA_ARGS__)
+#else
+#define OTA_LOG(fmt, ...)
 #endif
 
 #endif

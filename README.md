@@ -198,6 +198,46 @@ Pendant un scan, la page se recharge automatiquement toutes les 2 secondes jusqu
 
 La configuration WiFi est appliquee avec `wifi_station_set_config()`, donc elle est sauvegardee dans la zone de configuration flash du SDK ESP8266.
 
+## OTA
+
+Le firmware expose une page OTA :
+
+```text
+http://<ip-esp>/ota
+http://192.168.4.1/ota
+```
+
+La page affiche l'image active et attend le fichier :
+
+```text
+.pio/build/d1_mini_pro_ota/firmware.ota.bin
+```
+
+Ne pas envoyer `.pio/build/d1_mini_pro_ota/firmware.bin` : avec `esp8266-rtos-sdk`, PlatformIO genere encore une image scindee (`firmware.bin` + `firmware.bin.irom0text.bin`). Le projet cree donc un fichier OTA dedie `firmware.ota.bin` au format ESP8266 v2.
+
+Compiler l'image OTA :
+
+```sh
+pio run -e d1_mini_pro_ota
+```
+
+L'environnement `d1_mini_pro` reste le build serie historique. L'ecriture OTA flash est activee uniquement dans `d1_mini_pro_ota`.
+
+Le firmware coupe le jouet avant l'ecriture OTA, refuse les autres actions pendant la mise a jour, ecrit l'image sur le slot inactif, selectionne ce slot, puis redemarre.
+
+Pour amorcer un appareil en mode OTA, flasher le bootloader Espressif et l'image OTA a l'adresse `0x1000` :
+
+```sh
+python /home/kaj/.platformio/packages/tool-esptoolpy@1.30000.201119/esptool.py \
+  --chip esp8266 --port <port> --baud 115200 write_flash \
+  0x0 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/boot_v1.7.bin \
+  0x1000 .pio/build/d1_mini_pro_ota/firmware.ota.bin \
+  0xffc000 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/esp_init_data_default.bin \
+  0xffe000 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/blank.bin
+```
+
+Remplacer `<port>` par le port serie du module.
+
 ## Compilation
 
 Compiler :
@@ -227,6 +267,7 @@ src/main.c       Bootstrap ESP8266 RTOS SDK et lancement des tâches
 src/hardware.*   GPIO, laser, conversion coordonnées -> servos, PWM servo
 src/game.*       Moteur de patterns et état ON/OFF du jouet
 src/web.*        WiFi AP/station, portail captif DNS, serveur HTTP
+src/ota.*        Etat OTA, ecriture flash du slot inactif, redemarrage
 src/app_util.h   Helpers partagés temps/coordonnées
 ```
 

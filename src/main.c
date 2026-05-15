@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hardware.h"
 #include "logging.h"
+#include "ota.h"
 #include "web.h"
 
 #include "esp_common.h"
@@ -37,16 +38,21 @@ uint32 user_rf_cal_sector_set(void)
 
 void user_init(void)
 {
+    hardware_laser_init_safe_state();
     UART_SetBaudrate(UART0, SERIAL_BAUD_RATE);
     srand((unsigned)(0x8266u ^ (uint32_t)xTaskGetTickCount()));
 
     hardware_init();
+    game_set_enabled(false);
     web_portal_init();
+    ota_init();
 
     APP_LOG("Laser Cat Toy ESP8266 RTOS start - pattern engine");
     APP_LOG("servo_h_gpio=%d servo_v_gpio=%d laser_gpio=%d",
             SERVO_HORIZONTAL_GPIO, SERVO_VERTICAL_GPIO, LASER_GPIO);
     APP_LOG("config_ap_ssid=%s path=/wifi", CONFIG_AP_SSID);
+    APP_LOG("ota_running=%s ota_upload_expected=%s",
+            ota_get_running_bin_name(), ota_get_expected_upload_bin_name());
 
     xTaskCreate(hardware_servo_pwm_task, "servo_pwm", 384, NULL, 5, NULL);
     xTaskCreate(game_movement_task, "movement", 768, NULL, 3, NULL);
