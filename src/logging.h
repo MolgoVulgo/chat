@@ -19,6 +19,10 @@
 #define WEB_DEBUG_LOG_ENABLED 0
 #endif
 
+#ifndef OTA_LOG_ENABLED
+#define OTA_LOG_ENABLED 0
+#endif
+
 #if APP_LOG_ENABLED
 #define APP_LOG(fmt, ...) os_printf("[app] " fmt "\n", ##__VA_ARGS__)
 #else
@@ -41,6 +45,12 @@
 #define WEB_DEBUG_LOG(fmt, ...) os_printf("[web:debug] " fmt "\n", ##__VA_ARGS__)
 #else
 #define WEB_DEBUG_LOG(fmt, ...)
+#endif
+
+#if OTA_LOG_ENABLED
+#define OTA_LOG(fmt, ...) os_printf("[ota] " fmt "\n", ##__VA_ARGS__)
+#else
+#define OTA_LOG(fmt, ...)
 #endif
 
 #endif
