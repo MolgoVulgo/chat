@@ -2,6 +2,7 @@
 
 #include "app_util.h"
 #include "game.h"
+#include "hardware.h"
 #include "logging.h"
 #include "main.h"
 #include "ota.h"
@@ -438,10 +439,13 @@ static void http_send_home(int client)
     append_page_start(http_body, sizeof(http_body), &used, "Laser Cat Toy");
     appendf(http_body, sizeof(http_body), &used,
             "<p>Jouet: <strong>%s</strong></p>"
+            "<p>Laser: <strong>%s</strong></p>"
             "<p>WiFi: <strong>%s</strong></p>"
             "<p>IP: <strong>%s</strong></p>"
-            "<p><a href='/on'>ON</a><a class='off' href='/off'>OFF</a><a href='/ota'>OTA</a></p>",
+            "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/ota'>OTA</a></p>",
             game_is_enabled() ? "ON" : "OFF",
+            hardware_laser_is_on() ? "ON" : "OFF",
             station_status_text(),
             ipaddr_ntoa(&station_ip.ip));
     append_page_end(http_body, sizeof(http_body), &used);
@@ -474,6 +478,10 @@ static void http_send_wifi(int client)
     appendf(http_body, sizeof(http_body), &used,
             "%s"
             "<p class='muted'>Portail ESP OK.</p>"
+            "<p>Jouet: <strong>%s</strong></p>"
+            "<p>Laser: <strong>%s</strong></p>"
+            "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a></p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
             "<p><a href='/scan'>Scanner les reseaux</a></p>"
@@ -481,6 +489,8 @@ static void http_send_wifi(int client)
             "<div class='field'><label>Reseau detecte</label><select name='ssid'>"
             "<option value=''>Selectionner un reseau</option>",
             (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=/wifi'>" : "",
+            game_is_enabled() ? "ON" : "OFF",
+            hardware_laser_is_on() ? "ON" : "OFF",
             station_status_text(),
             scan_status_text());
 
@@ -811,6 +821,22 @@ static void http_handle_request(int client, char *request, int request_len)
         }
         game_set_enabled(false);
         WEB_LOG("toy disabled from web");
+        http_redirect(client, "/");
+    } else if (strcmp(path, "/laser/on") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_set_enabled(false);
+        hardware_laser_set(true);
+        WEB_LOG("laser enabled from web");
+        http_redirect(client, "/");
+    } else if (strcmp(path, "/laser/off") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_set_enabled(false);
+        hardware_laser_set(false);
+        WEB_LOG("laser disabled from web");
         http_redirect(client, "/");
     } else if (strcmp(path, "/scan") == 0) {
         if (http_reject_when_ota_running(client)) {

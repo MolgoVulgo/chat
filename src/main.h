@@ -18,6 +18,7 @@
 #define SERVO_HORIZONTAL_GPIO   5       // D1 / GPIO5
 #define SERVO_VERTICAL_GPIO     4       // D2 / GPIO4
 #define LASER_GPIO              14      // D5 / GPIO14 -> gate MOSFET via 100 ohms
+#define LASER_ACTIVE_LOW        0       // 0 = GPIO high allume, 1 = GPIO low allume
 
 // -----------------------------------------------------------------------------
 // Limites mécaniques servos

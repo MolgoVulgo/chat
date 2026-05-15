@@ -38,10 +38,12 @@ uint32 user_rf_cal_sector_set(void)
 
 void user_init(void)
 {
+    hardware_laser_init_safe_state();
     UART_SetBaudrate(UART0, SERIAL_BAUD_RATE);
     srand((unsigned)(0x8266u ^ (uint32_t)xTaskGetTickCount()));
 
     hardware_init();
+    game_set_enabled(false);
     web_portal_init();
     ota_init();
 

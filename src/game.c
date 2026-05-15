@@ -172,9 +172,12 @@ static const pattern_t capture_pattern = {
 void game_set_enabled(bool enabled)
 {
     toy_enabled = enabled;
-    if (!enabled) {
+    if (enabled) {
+        hardware_servo_set_enabled(true);
+    } else {
         hardware_laser_set(false);
         hardware_reset_position();
+        hardware_servo_set_enabled(false);
         current_x = START_X;
         current_y = START_Y;
     }
@@ -441,7 +444,6 @@ void game_movement_task(void *arg)
 
     while (true) {
         if (!toy_enabled) {
-            game_set_enabled(false);
             vTaskDelay(ms_to_ticks_min1(200));
             continue;
         }

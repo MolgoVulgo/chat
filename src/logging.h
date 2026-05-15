@@ -11,6 +11,10 @@
 #define PATTERN_LOG_ENABLED 0
 #endif
 
+#ifndef HARDWARE_LOG_ENABLED
+#define HARDWARE_LOG_ENABLED 0
+#endif
+
 #ifndef WEB_LOG_ENABLED
 #define WEB_LOG_ENABLED 0
 #endif
@@ -33,6 +37,12 @@
 #define PATTERN_LOG(fmt, ...) os_printf("[pattern] " fmt "\n", ##__VA_ARGS__)
 #else
 #define PATTERN_LOG(fmt, ...)
+#endif
+
+#if HARDWARE_LOG_ENABLED
+#define HARDWARE_LOG(fmt, ...) os_printf("[hw] " fmt "\n", ##__VA_ARGS__)
+#else
+#define HARDWARE_LOG(fmt, ...)
 #endif
 
 #if WEB_LOG_ENABLED
