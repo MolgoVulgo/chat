@@ -1,0 +1,21 @@
+{
+  "schema": "laser_cat_patterns.v1",
+  "patterns": [
+    {
+      "id": "bad_type",
+      "name": "Bad type",
+      "category": "test",
+      "weight": 1,
+      "intensity": "low",
+      "steps": [
+        {
+          "type": "teleport",
+          "laser": true,
+          "x": 0.0,
+          "y": 0.0,
+          "duration_ms": 1000
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "laser_cat_patterns.v1",
+  "patterns": [
+    {
+      "id": "missing_duration",
+      "name": "Missing duration",
+      "category": "test",
+      "weight": 1,
+      "intensity": "low",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": 0.0
+        }
+      ]
+    }
+  ]
+}

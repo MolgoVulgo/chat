@@ -1,0 +1,2254 @@
+{
+  "schema": "laser_cat_patterns.v1",
+  "meta": {
+    "name": "chatchat_patterns_10x25",
+    "version": 1,
+    "description": "Pack de 10 patterns fluides, progressifs et non frustrants pour jouet laser chat. Chaque pattern contient 20 à 30 points/steps exploitables directement par le moteur ESP.",
+    "target": "ESP8266 / Wemos D1 mini Pro",
+    "design_rules": [
+      "mouvements majoritairement lents et continus",
+      "pauses visibles régulières pour permettre l'observation et l'anticipation",
+      "extinction laser limitée et toujours courte",
+      "déplacements invisibles rares et courts",
+      "amplitudes modérées pour limiter les mouvements inutiles des servos",
+      "pas de trajectoire chaotique permanente",
+      "pas de fuite impossible à suivre",
+      "phases de repos visuel pour réduire la frustration"
+    ]
+  },
+  "runtime": {
+    "selection_mode": "weighted_random",
+    "capture_every": 4,
+    "transition_ms_min": 1800,
+    "transition_ms_max": 3500,
+    "pause_between_patterns_ms_min": 3500,
+    "pause_between_patterns_ms_max": 8000,
+    "jitter_interval_ms": 650,
+    "speed_scale": 1.0
+  },
+  "constraints": {
+    "x_min": -1.0,
+    "x_max": 1.0,
+    "y_min": -1.0,
+    "y_max": 1.0,
+    "visible_move_min_ms": 2600,
+    "visible_move_default_ms": 4800,
+    "visible_hold_min_ms": 1800,
+    "off_hold_max_recommended_ms": 1800,
+    "jitter_amplitude_max_recommended": 0.025,
+    "recommended_execution": "interpolation smoothstep côté ESP"
+  },
+  "patterns": [
+    {
+      "id": "slow_floor_mouse",
+      "name": "Souris au sol lente",
+      "category": "prey_simulation",
+      "weight": 18,
+      "intensity": "low",
+      "point_count": 25,
+      "description": "Trajectoire basse, lente, avec petites hésitations. Pattern de base peu frustrant.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.38,
+          "y": -0.34,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.32,
+          "y": -0.33,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.26,
+          "y": -0.31,
+          "duration_ms": 4400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.26,
+          "y": -0.31,
+          "duration_ms": 2800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.3,
+          "duration_ms": 5000
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.3,
+          "duration_ms": 2200,
+          "amplitude": 0.012
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.09,
+          "y": -0.27,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 4700
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.27,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.24,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.24,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.2,
+          "duration_ms": 4800
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.2,
+          "duration_ms": 2400,
+          "amplitude": 0.01
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.14,
+          "y": -0.17,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.16,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.16,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.03,
+          "y": -0.19,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.11,
+          "y": -0.23,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.11,
+          "y": -0.23,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.31,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.36,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.36,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.36,
+          "duration_ms": 2600,
+          "amplitude": 0.008
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.36,
+          "duration_ms": 4500
+        }
+      ]
+    },
+    {
+      "id": "edge_sniffing",
+      "name": "Exploration de bord",
+      "category": "edge_behavior",
+      "weight": 14,
+      "intensity": "low_medium",
+      "point_count": 24,
+      "description": "La cible longe un bord imaginaire avec arrêts fréquents. Bon pour déclencher l'approche sans excitation excessive.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.55,
+          "y": -0.08,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.5,
+          "y": -0.04,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.48,
+          "y": 0.02,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.48,
+          "y": 0.02,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.45,
+          "y": 0.1,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.39,
+          "y": 0.15,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.39,
+          "y": 0.15,
+          "duration_ms": 2200,
+          "amplitude": 0.01
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.39,
+          "y": 0.15,
+          "duration_ms": 3800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.31,
+          "y": 0.13,
+          "duration_ms": 4700
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.25,
+          "y": 0.08,
+          "duration_ms": 4800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.25,
+          "y": 0.08,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": 0.02,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.02,
+          "duration_ms": 4700
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 900
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.16,
+          "y": -0.09,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.16,
+          "y": -0.09,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.13,
+          "duration_ms": 4700
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.34,
+          "y": -0.15,
+          "duration_ms": 5300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.34,
+          "y": -0.15,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.43,
+          "y": -0.12,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.43,
+          "y": -0.12,
+          "duration_ms": 2400,
+          "amplitude": 0.012
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.51,
+          "y": -0.1,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.51,
+          "y": -0.1,
+          "duration_ms": 4400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.51,
+          "y": -0.1,
+          "duration_ms": 5000
+        }
+      ]
+    },
+    {
+      "id": "cautious_triangle_loop",
+      "name": "Triangle prudent",
+      "category": "structured_patrol",
+      "weight": 10,
+      "intensity": "low_medium",
+      "point_count": 26,
+      "description": "Triangle lent cassé par des pauses. Structure prévisible sans boucle mécanique.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.22,
+          "y": -0.3,
+          "duration_ms": 3500
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.16,
+          "y": -0.24,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.08,
+          "y": -0.16,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.08,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.08,
+          "duration_ms": 4200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.08,
+          "duration_ms": 2200,
+          "amplitude": 0.012
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.02,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.16,
+          "y": 0.1,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.24,
+          "y": 0.18,
+          "duration_ms": 5600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.24,
+          "y": 0.18,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.16,
+          "y": 0.16,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": 0.12,
+          "duration_ms": 4800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": 0.12,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.05,
+          "y": 0.05,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.15,
+          "y": -0.03,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 5400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 4200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 2300,
+          "amplitude": 0.01
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.26,
+          "y": -0.2,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.22,
+          "y": -0.3,
+          "duration_ms": 4800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.22,
+          "y": -0.3,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.27,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.03,
+          "y": -0.22,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.03,
+          "y": -0.22,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.19,
+          "duration_ms": 4200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.19,
+          "duration_ms": 4500
+        }
+      ]
+    },
+    {
+      "id": "soft_zigzag_insect",
+      "name": "Petit insecte contrôlé",
+      "category": "soft_zigzag",
+      "weight": 9,
+      "intensity": "medium",
+      "point_count": 23,
+      "description": "Zigzag doux et ralenti. Stimule la vision du mouvement sans basculer dans le chaos.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.05,
+          "y": -0.05,
+          "duration_ms": 2600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.03,
+          "y": -0.01,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": 0.05,
+          "duration_ms": 2900
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.08,
+          "duration_ms": 3300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.08,
+          "duration_ms": 2600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.01,
+          "y": 0.13,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.12,
+          "y": 0.16,
+          "duration_ms": 3400
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.12,
+          "y": 0.16,
+          "duration_ms": 2000,
+          "amplitude": 0.014
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.2,
+          "y": 0.1,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.14,
+          "y": 0.02,
+          "duration_ms": 3500
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.14,
+          "y": 0.02,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.24,
+          "y": -0.03,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.16,
+          "y": -0.09,
+          "duration_ms": 3500
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.07,
+          "duration_ms": 3800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.07,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.05,
+          "y": -0.11,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.13,
+          "y": -0.04,
+          "duration_ms": 3800
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.13,
+          "y": -0.04,
+          "duration_ms": 2000,
+          "amplitude": 0.012
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.04,
+          "y": 0.0,
+          "duration_ms": 3300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.06,
+          "duration_ms": 3400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.06,
+          "duration_ms": 4000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.12,
+          "duration_ms": 3600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.12,
+          "duration_ms": 4200
+        }
+      ]
+    },
+    {
+      "id": "hide_under_object",
+      "name": "Passage sous obstacle",
+      "category": "limited_disappear",
+      "weight": 8,
+      "intensity": "medium",
+      "point_count": 24,
+      "description": "Disparition rare et courte, comme une proie passant sous un meuble. Les moteurs ne font pas de grands déplacements invisibles.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.28,
+          "y": -0.32,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.3,
+          "duration_ms": 4000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.12,
+          "y": -0.29,
+          "duration_ms": 4200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.12,
+          "y": -0.29,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.28,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.27,
+          "duration_ms": 4300
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 1000
+        },
+        {
+          "type": "off_move",
+          "laser": false,
+          "x": -0.1,
+          "y": -0.24,
+          "duration_ms": 1800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.24,
+          "duration_ms": 2800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.21,
+          "duration_ms": 4500
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.21,
+          "duration_ms": 2200,
+          "amplitude": 0.011
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.27,
+          "y": -0.18,
+          "duration_ms": 4600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.27,
+          "y": -0.18,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.2,
+          "y": -0.13,
+          "duration_ms": 4100
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.1,
+          "duration_ms": 4200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.1,
+          "duration_ms": 3800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.13,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.16,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.16,
+          "duration_ms": 4000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.18,
+          "y": -0.22,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.26,
+          "y": -0.28,
+          "duration_ms": 4400
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.26,
+          "y": -0.28,
+          "duration_ms": 2200,
+          "amplitude": 0.01
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.26,
+          "y": -0.28,
+          "duration_ms": 4800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.26,
+          "y": -0.28,
+          "duration_ms": 5000
+        }
+      ]
+    },
+    {
+      "id": "breathing_spiral",
+      "name": "Spirale respirée",
+      "category": "curved_motion",
+      "weight": 7,
+      "intensity": "low_medium",
+      "point_count": 28,
+      "description": "Pseudo-spirale lente, non circulaire parfaite. Permet de suivre avec les yeux sans surstimulation.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": 0.0,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.05,
+          "y": 0.02,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.09,
+          "y": 0.07,
+          "duration_ms": 3900
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.14,
+          "duration_ms": 4200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.14,
+          "duration_ms": 2800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.01,
+          "y": 0.18,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.07,
+          "y": 0.15,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.13,
+          "y": 0.08,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.13,
+          "y": 0.08,
+          "duration_ms": 3300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.15,
+          "y": -0.02,
+          "duration_ms": 4500
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.12,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.17,
+          "duration_ms": 4600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.17,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.13,
+          "duration_ms": 4800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.22,
+          "y": -0.03,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.23,
+          "y": 0.1,
+          "duration_ms": 5100
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.23,
+          "y": 0.1,
+          "duration_ms": 3600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.15,
+          "y": 0.22,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.02,
+          "y": 0.28,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.13,
+          "y": 0.23,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.13,
+          "y": 0.23,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.26,
+          "y": 0.1,
+          "duration_ms": 5400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.28,
+          "y": -0.07,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.23,
+          "duration_ms": 5600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.23,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.3,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.3,
+          "duration_ms": 2600,
+          "amplitude": 0.01
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.3,
+          "duration_ms": 5200
+        }
+      ]
+    },
+    {
+      "id": "rest_and_tease",
+      "name": "Repos et relance",
+      "category": "low_frustration",
+      "weight": 13,
+      "intensity": "low",
+      "point_count": 22,
+      "description": "Pattern volontairement calme : longues pauses visibles, petits déplacements. Sert à faire retomber l'excitation.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.12,
+          "y": -0.26,
+          "duration_ms": 6500
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.12,
+          "y": -0.26,
+          "duration_ms": 2400,
+          "amplitude": 0.008
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.08,
+          "y": -0.22,
+          "duration_ms": 5000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.08,
+          "y": -0.22,
+          "duration_ms": 6200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.19,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.19,
+          "duration_ms": 5800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.05,
+          "y": -0.17,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.05,
+          "y": -0.17,
+          "duration_ms": 2200,
+          "amplitude": 0.008
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.05,
+          "y": -0.17,
+          "duration_ms": 6200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.21,
+          "duration_ms": 5300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.25,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.25,
+          "duration_ms": 6000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.28,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.3,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.3,
+          "duration_ms": 6800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.29,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.27,
+          "duration_ms": 5000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.27,
+          "duration_ms": 6600
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.13,
+          "y": -0.27,
+          "duration_ms": 2600,
+          "amplitude": 0.006
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.24,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.24,
+          "duration_ms": 7000
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 1600
+        }
+      ]
+    },
+    {
+      "id": "slow_escape_then_stop",
+      "name": "Fuite courte puis arrêt",
+      "category": "controlled_escape",
+      "weight": 9,
+      "intensity": "medium",
+      "point_count": 25,
+      "description": "Quelques accélérations modérées, mais toujours suivies d'une pause longue pour éviter la frustration.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.08,
+          "y": 0.02,
+          "duration_ms": 3000
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.08,
+          "y": 0.02,
+          "duration_ms": 2200,
+          "amplitude": 0.012
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.04,
+          "duration_ms": 3100
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.08,
+          "y": 0.04,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.22,
+          "y": 0.02,
+          "duration_ms": 3000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.22,
+          "y": 0.02,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.28,
+          "y": -0.08,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.16,
+          "duration_ms": 3600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.16,
+          "duration_ms": 5600
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.2,
+          "y": -0.16,
+          "duration_ms": 2200,
+          "amplitude": 0.01
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.18,
+          "duration_ms": 3600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.18,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.15,
+          "duration_ms": 3300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.15,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.28,
+          "y": -0.08,
+          "duration_ms": 3600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.28,
+          "y": -0.08,
+          "duration_ms": 5800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": 0.03,
+          "duration_ms": 4000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.05,
+          "y": 0.09,
+          "duration_ms": 4200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.05,
+          "y": 0.09,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.09,
+          "y": 0.12,
+          "duration_ms": 3800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.18,
+          "y": 0.06,
+          "duration_ms": 4000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.18,
+          "y": 0.06,
+          "duration_ms": 5800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.02,
+          "duration_ms": 4500
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.02,
+          "duration_ms": 2400,
+          "amplitude": 0.008
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.02,
+          "duration_ms": 6400
+        }
+      ]
+    },
+    {
+      "id": "wide_soft_rectangle",
+      "name": "Rectangle souple large",
+      "category": "geometric_soft",
+      "weight": 7,
+      "intensity": "low_medium",
+      "point_count": 27,
+      "description": "Rectangle arrondi et lent, sans angles secs. Les coins sont des pauses d'observation.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.36,
+          "y": -0.28,
+          "duration_ms": 3400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.29,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": -0.3,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.29,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.14,
+          "y": -0.27,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.28,
+          "y": -0.24,
+          "duration_ms": 5600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.28,
+          "y": -0.24,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.28,
+          "y": -0.24,
+          "duration_ms": 2200,
+          "amplitude": 0.01
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.32,
+          "y": -0.12,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.34,
+          "y": 0.0,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.31,
+          "y": 0.13,
+          "duration_ms": 5400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.31,
+          "y": 0.13,
+          "duration_ms": 4800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.18,
+          "y": 0.18,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.04,
+          "y": 0.2,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.1,
+          "y": 0.19,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.24,
+          "y": 0.16,
+          "duration_ms": 5600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.24,
+          "y": 0.16,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.33,
+          "y": 0.06,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.36,
+          "y": -0.06,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.35,
+          "y": -0.18,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.35,
+          "y": -0.18,
+          "duration_ms": 4400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.29,
+          "y": -0.24,
+          "duration_ms": 4500
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.27,
+          "duration_ms": 4600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.18,
+          "y": -0.27,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.06,
+          "y": -0.28,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.27,
+          "duration_ms": 4600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.27,
+          "duration_ms": 5200
+        }
+      ]
+    },
+    {
+      "id": "low_capture_zone",
+      "name": "Zone basse capturable",
+      "category": "frustration_reduction",
+      "weight": 10,
+      "intensity": "low",
+      "point_count": 21,
+      "description": "Même si le point n'est pas attrapable, cette scène ralentit fortement et stabilise la cible sur une zone basse pour limiter la frustration.",
+      "steps": [
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.18,
+          "y": -0.12,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.12,
+          "y": -0.18,
+          "duration_ms": 5400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.24,
+          "duration_ms": 5600
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.24,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.31,
+          "duration_ms": 5800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.31,
+          "duration_ms": 7000
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.31,
+          "duration_ms": 2600,
+          "amplitude": 0.006
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.02,
+          "y": -0.31,
+          "duration_ms": 7200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.34,
+          "duration_ms": 5000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.34,
+          "duration_ms": 6800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.31,
+          "duration_ms": 5200
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.31,
+          "duration_ms": 2200,
+          "amplitude": 0.006
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.1,
+          "y": -0.31,
+          "duration_ms": 7000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.03,
+          "y": -0.29,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.28,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.28,
+          "duration_ms": 7600
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.28,
+          "duration_ms": 2400,
+          "amplitude": 0.005
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.28,
+          "duration_ms": 8000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.32,
+          "duration_ms": 5400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.32,
+          "duration_ms": 8000
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 1800
+        }
+      ]
+    },
+    {
+      "id": "gentle_hex_walk",
+      "name": "Hexagone doux",
+      "category": "geometric_soft",
+      "weight": 5,
+      "intensity": "low_medium",
+      "point_count": 30,
+      "description": "Hexagone très ralenti et adouci. Pattern rare, utile pour varier sans accélérer fortement.",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 3200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.16,
+          "y": -0.2,
+          "duration_ms": 4600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.06,
+          "y": -0.25,
+          "duration_ms": 4800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.24,
+          "duration_ms": 5000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.16,
+          "y": -0.18,
+          "duration_ms": 5000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.16,
+          "y": -0.18,
+          "duration_ms": 4200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.25,
+          "y": -0.08,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.28,
+          "y": 0.04,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.22,
+          "y": 0.15,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.22,
+          "y": 0.15,
+          "duration_ms": 4600
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.22,
+          "y": 0.15,
+          "duration_ms": 2200,
+          "amplitude": 0.008
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.1,
+          "y": 0.22,
+          "duration_ms": 5400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": 0.24,
+          "duration_ms": 5400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.14,
+          "y": 0.2,
+          "duration_ms": 5400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.14,
+          "y": 0.2,
+          "duration_ms": 4500
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.25,
+          "y": 0.1,
+          "duration_ms": 5400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.29,
+          "y": -0.02,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 5200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.24,
+          "y": -0.12,
+          "duration_ms": 4800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.14,
+          "y": -0.1,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.08,
+          "duration_ms": 4300
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.04,
+          "y": -0.08,
+          "duration_ms": 3800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.05,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.14,
+          "y": 0.0,
+          "duration_ms": 4400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.14,
+          "y": 0.0,
+          "duration_ms": 4400
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": 0.06,
+          "duration_ms": 4300
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.03,
+          "y": 0.08,
+          "duration_ms": 4300
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.03,
+          "y": 0.08,
+          "duration_ms": 2200,
+          "amplitude": 0.008
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.12,
+          "y": 0.04,
+          "duration_ms": 4400
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.12,
+          "y": 0.04,
+          "duration_ms": 5200
+        }
+      ]
+    },
+    {
+      "id": "final_wind_down",
+      "name": "Retour au calme",
+      "category": "session_end",
+      "weight": 6,
+      "intensity": "low",
+      "point_count": 20,
+      "description": "Pattern de fin de session. Le point ralentit, reste bas, puis s'éteint proprement.",
+      "steps": [
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.2,
+          "y": 0.02,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.15,
+          "y": -0.06,
+          "duration_ms": 5600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.14,
+          "duration_ms": 5800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.1,
+          "y": -0.14,
+          "duration_ms": 5200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.04,
+          "y": -0.2,
+          "duration_ms": 5800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 6000
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 6500
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 2600,
+          "amplitude": 0.006
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.25,
+          "duration_ms": 7000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.08,
+          "y": -0.3,
+          "duration_ms": 6200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.08,
+          "y": -0.3,
+          "duration_ms": 7600
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.33,
+          "duration_ms": 5800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": -0.02,
+          "y": -0.33,
+          "duration_ms": 8000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.31,
+          "duration_ms": 5800
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.31,
+          "duration_ms": 8000
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.31,
+          "duration_ms": 2200,
+          "amplitude": 0.005
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.05,
+          "y": -0.31,
+          "duration_ms": 9000
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 1800
+        },
+        {
+          "type": "off_move",
+          "laser": false,
+          "x": 0.0,
+          "y": 0.0,
+          "duration_ms": 3000
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 3000
+        }
+      ]
+    }
+  ]
+}

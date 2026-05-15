@@ -1,0 +1,21 @@
+{
+  "schema": "laser_cat_patterns.v1",
+  "patterns": [
+    {
+      "id": "bad_jitter",
+      "name": "Bad jitter",
+      "category": "test",
+      "weight": 1,
+      "intensity": "high",
+      "steps": [
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.0,
+          "y": 0.0,
+          "duration_ms": 1000
+        }
+      ]
+    }
+  ]
+}

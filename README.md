@@ -258,6 +258,56 @@ Ouvrir le moniteur série :
 pio device monitor
 ```
 
+## Outils JSON Python
+
+Les patterns JSON décrits dans `docs/chatchat.md` peuvent être validés,
+listés et visualisés avant transfert vers l'ESP.
+
+Ouvrir la GUI locale de gestion des patterns :
+
+```sh
+./start.sh
+```
+
+Ou ouvrir un fichier précis :
+
+```sh
+./start.sh gui tools/examples/default_patterns.json
+```
+
+Valider un fichier :
+
+```sh
+./start.sh validate tools/examples/default_patterns.json
+```
+
+Lister les patterns :
+
+```sh
+./start.sh list tools/examples/default_patterns.json
+```
+
+Exporter une visualisation PNG d'un pattern :
+
+```sh
+./start.sh view tools/examples/default_patterns.json --pattern mouse_cautious --output pattern.png
+```
+
+La GUI utilise `tkinter`. L'export PNG nécessite `matplotlib`. La validation,
+la liste et l'aperçu GUI utilisent uniquement la bibliothèque standard Python.
+
+Coordonnées JSON :
+
+- `x = -1.0` gauche, `x = +1.0` droite ;
+- `y = -1.0` bas, `y = +1.0` haut ;
+- les outils convertissent vers les coordonnées firmware `-1000` à `+1000`.
+
+Tests Python :
+
+```sh
+python3 -m pytest
+```
+
 ## Structure du projet
 
 ```text

@@ -1,0 +1,37 @@
+{
+  "schema": "laser_cat_patterns.v1",
+  "patterns": [
+    {
+      "id": "duplicate",
+      "name": "First",
+      "category": "test",
+      "weight": 1,
+      "intensity": "low",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": 0.0,
+          "duration_ms": 1000
+        }
+      ]
+    },
+    {
+      "id": "duplicate",
+      "name": "Second",
+      "category": "test",
+      "weight": 1,
+      "intensity": "low",
+      "steps": [
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.1,
+          "y": 0.1,
+          "duration_ms": 1000
+        }
+      ]
+    }
+  ]
+}
