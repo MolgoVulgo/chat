@@ -53,6 +53,20 @@
 #define PATTERN_CAPTURE_EVERY           5
 #define JITTER_POINT_INTERVAL_MS        140
 
+#define PATTERN_SCHEMA                  "laser_cat_patterns.v1"
+#define PATTERN_JSON_UPLOAD_ENABLED     0
+#define PATTERN_JSON_UPLOAD_MAX_BYTES   (64 * 1024)
+#define PATTERN_MAX_PATTERNS            16
+#define PATTERN_MAX_TOTAL_STEPS         360
+#define PATTERN_MAX_ID_LEN              32
+#define PATTERN_MAX_NAME_LEN            48
+#define PATTERN_MIN_DURATION_MS         100
+#define PATTERN_MIN_VISIBLE_MS          1000
+#define PATTERN_MAX_JITTER_AMPLITUDE    250
+#define PATTERN_SPEED_MIN_PERCENT       25
+#define PATTERN_SPEED_MAX_PERCENT       300
+#define PATTERN_SPEED_DEFAULT_PERCENT   100
+
 // Coordonnées normalisées internes : -1000 à +1000.
 // x = -1000 gauche, +1000 droite.
 // y = -1000 bas,    +1000 haut.

@@ -56,7 +56,7 @@ void user_init(void)
 
     xTaskCreate(hardware_servo_pwm_task, "servo_pwm", 384, NULL, 5, NULL);
     xTaskCreate(game_movement_task, "movement", 768, NULL, 3, NULL);
-    xTaskCreate(web_http_server_task, "http", 1536, NULL, 4, NULL);
+    xTaskCreate(web_http_server_task, "http", 3072, NULL, 4, NULL);
     xTaskCreate(web_dns_server_task, "dns", 768, NULL, 4, NULL);
     xTaskCreate(web_wifi_status_task, "wifi_status", 512, NULL, 2, NULL);
 }

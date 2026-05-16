@@ -1,43 +1,27 @@
 #include "game.h"
 
 #include "app_util.h"
+#include "default_patterns.h"
 #include "hardware.h"
 #include "logging.h"
 #include "main.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "esp_common.h"
 #include "freertos/task.h"
 
-typedef enum {
-    STEP_HOLD,
-    STEP_MOVE,
-    STEP_JITTER,
-    STEP_OFF_HOLD,
-    STEP_OFF_MOVE
-} pattern_step_type_t;
-
-typedef struct {
-    pattern_step_type_t type;
-    bool laser;
-    int16_t x;
-    int16_t y;
-    uint16_t duration_ms;
-    uint16_t amplitude;
-} pattern_step_t;
-
-typedef struct {
-    const char *id;
-    const char *name;
-    uint8_t weight;
-    uint8_t step_count;
-    const pattern_step_t *steps;
-} pattern_t;
-
 static volatile bool toy_enabled = false;
 static int16_t current_x = START_X;
 static int16_t current_y = START_Y;
+static const pattern_pack_t *active_pack = &default_pattern_pack;
+static char pattern_status[96] = "Pack compile actif.";
+static volatile int16_t selected_pattern_index = -1;
+static volatile uint16_t speed_percent = PATTERN_SPEED_DEFAULT_PERCENT;
+static volatile uint32_t pattern_control_revision = 0;
+static volatile uint32_t active_run_revision = 0;
 
 static const pattern_step_t pattern_mouse_cautious[] = {
     { STEP_HOLD,     true,  -400, -200,  800,  0 },
@@ -169,6 +153,120 @@ static const pattern_t capture_pattern = {
     pattern_capture
 };
 
+void game_use_default_patterns(void)
+{
+    game_set_enabled(false);
+    active_pack = &default_pattern_pack;
+    selected_pattern_index = -1;
+    pattern_control_revision++;
+    snprintf(pattern_status, sizeof(pattern_status), "Pack compile actif.");
+    PATTERN_LOG("pack reset source=%s count=%d revision=%u",
+                active_pack->source_name,
+                active_pack->pattern_count,
+                (unsigned)pattern_control_revision);
+}
+
+bool game_use_pattern_pack(const pattern_pack_t *pack, const char *status)
+{
+    if (pack == NULL || pack->patterns == NULL || pack->pattern_count == 0) {
+        snprintf(pattern_status, sizeof(pattern_status), "Pack invalide, fallback compile.");
+        game_use_default_patterns();
+        return false;
+    }
+
+    game_set_enabled(false);
+    hardware_laser_set(false);
+    active_pack = pack;
+    selected_pattern_index = -1;
+    pattern_control_revision++;
+    snprintf(pattern_status, sizeof(pattern_status), "%s", status == NULL ? "Pack JSON actif." : status);
+    PATTERN_LOG("pack active source=%s count=%d capture_every=%d revision=%u",
+                active_pack->source_name,
+                active_pack->pattern_count,
+                active_pack->capture_every,
+                (unsigned)pattern_control_revision);
+    return true;
+}
+
+const pattern_pack_t *game_get_pattern_pack(void)
+{
+    return active_pack;
+}
+
+const char *game_get_pattern_status(void)
+{
+    return pattern_status;
+}
+
+bool game_set_selected_pattern(int16_t pattern_index)
+{
+    const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
+
+    if (pattern_index < 0) {
+        selected_pattern_index = -1;
+        pattern_control_revision++;
+        PATTERN_LOG("selection changed mode=auto revision=%u",
+                    (unsigned)pattern_control_revision);
+        return true;
+    }
+    if (pattern_index >= (int16_t)pack->pattern_count) {
+        PATTERN_LOG("selection rejected index=%d count=%d current=%d revision=%u",
+                    pattern_index,
+                    pack->pattern_count,
+                    selected_pattern_index,
+                    (unsigned)pattern_control_revision);
+        return false;
+    }
+
+    selected_pattern_index = pattern_index;
+    pattern_control_revision++;
+    PATTERN_LOG("selection changed index=%d id=%s revision=%u",
+                pattern_index,
+                pack->patterns[pattern_index].id,
+                (unsigned)pattern_control_revision);
+    return true;
+}
+
+int16_t game_get_selected_pattern(void)
+{
+    return selected_pattern_index;
+}
+
+const char *game_get_selected_pattern_id(void)
+{
+    const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
+    int16_t index = selected_pattern_index;
+
+    if (index < 0 || index >= (int16_t)pack->pattern_count) {
+        return "auto";
+    }
+    return pack->patterns[index].id;
+}
+
+void game_set_speed_percent(uint16_t new_speed_percent)
+{
+    uint16_t requested_speed_percent = new_speed_percent;
+
+    if (new_speed_percent < PATTERN_SPEED_MIN_PERCENT) {
+        new_speed_percent = PATTERN_SPEED_MIN_PERCENT;
+    }
+    if (new_speed_percent > PATTERN_SPEED_MAX_PERCENT) {
+        new_speed_percent = PATTERN_SPEED_MAX_PERCENT;
+    }
+
+    speed_percent = new_speed_percent;
+    pattern_control_revision++;
+    PATTERN_LOG("speed changed requested=%u applied=%u revision=%u",
+                requested_speed_percent,
+                speed_percent,
+                (unsigned)pattern_control_revision);
+}
+
+uint16_t game_get_speed_percent(void)
+{
+    return speed_percent;
+}
+
 void game_set_enabled(bool enabled)
 {
     toy_enabled = enabled;
@@ -206,6 +304,12 @@ static bool wait_enabled_delay(uint32_t duration_ms)
             game_set_enabled(false);
             return false;
         }
+        if (pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run interrupted during wait active_revision=%u current_revision=%u",
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision);
+            return false;
+        }
 
         uint32_t delay = MOTION_TICK_MS;
         if (elapsed + delay > duration_ms) {
@@ -217,6 +321,20 @@ static bool wait_enabled_delay(uint32_t duration_ms)
     }
 
     return true;
+}
+
+static uint32_t scaled_duration(uint32_t duration_ms)
+{
+    uint16_t speed = speed_percent;
+    if (speed < PATTERN_SPEED_MIN_PERCENT) {
+        speed = PATTERN_SPEED_MIN_PERCENT;
+    }
+
+    uint32_t scaled = (duration_ms * 100u) / speed;
+    if (scaled < MOTION_TICK_MS) {
+        scaled = MOTION_TICK_MS;
+    }
+    return scaled;
 }
 
 static uint16_t smoothstep_q10(uint32_t elapsed_ms, uint32_t duration_ms)
@@ -256,25 +374,43 @@ static void set_game_position(int16_t x, int16_t y)
 static const pattern_t *choose_weighted_pattern(void)
 {
     uint16_t total = 0;
+    const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(weighted_patterns); i++) {
-        total += weighted_patterns[i].weight;
+    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        total += pack->patterns[i].weight;
     }
 
     if (total == 0) {
-        return &weighted_patterns[0];
+        return &pack->patterns[0];
     }
 
     uint16_t draw = (uint16_t)random_range(0, total);
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(weighted_patterns); i++) {
-        if (draw < weighted_patterns[i].weight) {
-            return &weighted_patterns[i];
+    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        if (draw < pack->patterns[i].weight) {
+            return &pack->patterns[i];
         }
-        draw -= weighted_patterns[i].weight;
+        draw -= pack->patterns[i].weight;
     }
 
-    return &weighted_patterns[0];
+    return &pack->patterns[0];
+}
+
+static const pattern_t *find_capture_pattern(const pattern_pack_t *pack)
+{
+    if (pack == NULL || pack == &default_pattern_pack) {
+        return &capture_pattern;
+    }
+
+    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        if (strcmp(pack->patterns[i].id, "capture") == 0 ||
+            strcmp(pack->patterns[i].id, "final_wind_down") == 0 ||
+            strcmp(pack->patterns[i].id, "low_capture_zone") == 0) {
+            return &pack->patterns[i];
+        }
+    }
+
+    return NULL;
 }
 
 static bool step_has_position(const pattern_step_t *step)
@@ -287,7 +423,7 @@ static bool step_has_position(const pattern_step_t *step)
 
 static const pattern_step_t *first_position_step(const pattern_t *pattern)
 {
-    for (uint8_t i = 0; i < pattern->step_count; i++) {
+    for (uint16_t i = 0; i < pattern->step_count; i++) {
         if (step_has_position(&pattern->steps[i])) {
             return &pattern->steps[i];
         }
@@ -307,12 +443,18 @@ static void prepare_pattern_start(const pattern_t *pattern)
     int16_t from_y = current_y;
     int16_t to_x = first->x;
     int16_t to_y = first->y;
-    uint16_t duration = (uint16_t)random_range(PATTERN_TRANSITION_MIN_MS, PATTERN_TRANSITION_MAX_MS + 1);
+    uint16_t duration = (uint16_t)scaled_duration((uint32_t)random_range(PATTERN_TRANSITION_MIN_MS, PATTERN_TRANSITION_MAX_MS + 1));
 
     hardware_laser_set(false);
 
     for (uint32_t elapsed = 0; elapsed <= duration; elapsed += MOTION_TICK_MS) {
         if (!toy_enabled) {
+            return;
+        }
+        if (pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run interrupted during transition active_revision=%u current_revision=%u",
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision);
             return;
         }
 
@@ -332,7 +474,7 @@ static void run_hold_step(const pattern_step_t *step)
     }
 
     hardware_laser_set(step->laser);
-    wait_enabled_delay(step->duration_ms);
+    wait_enabled_delay(scaled_duration(step->duration_ms));
 }
 
 static void run_move_step(const pattern_step_t *step)
@@ -341,16 +483,23 @@ static void run_move_step(const pattern_step_t *step)
     int16_t from_y = current_y;
     int16_t to_x = step->x;
     int16_t to_y = step->y;
+    uint32_t duration = scaled_duration(step->duration_ms);
 
     hardware_laser_set(step->laser);
 
-    for (uint32_t elapsed = 0; elapsed <= step->duration_ms; elapsed += MOTION_TICK_MS) {
+    for (uint32_t elapsed = 0; elapsed <= duration; elapsed += MOTION_TICK_MS) {
         if (!toy_enabled) {
             return;
         }
+        if (pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run interrupted during move active_revision=%u current_revision=%u",
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision);
+            return;
+        }
 
-        int16_t x = interp_coord(from_x, to_x, elapsed, step->duration_ms);
-        int16_t y = interp_coord(from_y, to_y, elapsed, step->duration_ms);
+        int16_t x = interp_coord(from_x, to_x, elapsed, duration);
+        int16_t y = interp_coord(from_y, to_y, elapsed, duration);
         set_game_position(x, y);
         vTaskDelay(ms_to_ticks_min1(MOTION_TICK_MS));
     }
@@ -361,13 +510,21 @@ static void run_move_step(const pattern_step_t *step)
 static void run_jitter_step(const pattern_step_t *step)
 {
     uint32_t elapsed_total = 0;
+    uint32_t duration = scaled_duration(step->duration_ms);
+    uint32_t jitter_interval = scaled_duration(JITTER_POINT_INTERVAL_MS);
     int16_t center_x = step->x;
     int16_t center_y = step->y;
 
     hardware_laser_set(step->laser);
 
-    while (elapsed_total < step->duration_ms) {
+    while (elapsed_total < duration) {
         if (!toy_enabled) {
+            return;
+        }
+        if (pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run interrupted during jitter active_revision=%u current_revision=%u",
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision);
             return;
         }
 
@@ -378,13 +535,19 @@ static void run_jitter_step(const pattern_step_t *step)
         int16_t to_x = clamp_coord((int32_t)center_x + dx);
         int16_t to_y = clamp_coord((int32_t)center_y + dy);
 
-        uint32_t segment = JITTER_POINT_INTERVAL_MS;
-        if (elapsed_total + segment > step->duration_ms) {
-            segment = step->duration_ms - elapsed_total;
+        uint32_t segment = jitter_interval;
+        if (elapsed_total + segment > duration) {
+            segment = duration - elapsed_total;
         }
 
         for (uint32_t elapsed = 0; elapsed <= segment; elapsed += MOTION_TICK_MS) {
             if (!toy_enabled) {
+                return;
+            }
+            if (pattern_control_revision != active_run_revision) {
+                PATTERN_LOG("run interrupted during jitter move active_revision=%u current_revision=%u",
+                            (unsigned)active_run_revision,
+                            (unsigned)pattern_control_revision);
                 return;
             }
 
@@ -414,7 +577,7 @@ static void run_step(const pattern_step_t *step)
         break;
     case STEP_OFF_HOLD:
         hardware_laser_set(false);
-        wait_enabled_delay(step->duration_ms);
+        wait_enabled_delay(scaled_duration(step->duration_ms));
         break;
     case STEP_OFF_MOVE:
         run_move_step(step);
@@ -427,13 +590,30 @@ static void run_step(const pattern_step_t *step)
 
 static void run_pattern(const pattern_t *pattern)
 {
-    PATTERN_LOG("%s - %s", pattern->id, pattern->name);
+    PATTERN_LOG("run start id=%s name=%s steps=%u speed=%u selected=%d revision=%u",
+                pattern->id,
+                pattern->name,
+                pattern->step_count,
+                speed_percent,
+                selected_pattern_index,
+                (unsigned)active_run_revision);
 
     prepare_pattern_start(pattern);
 
-    for (uint8_t i = 0; i < pattern->step_count; i++) {
+    for (uint16_t i = 0; i < pattern->step_count; i++) {
+        if (!toy_enabled || pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run stop id=%s at_step=%u active_revision=%u current_revision=%u enabled=%d",
+                        pattern->id,
+                        i,
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision,
+                        toy_enabled);
+            return;
+        }
         run_step(&pattern->steps[i]);
     }
+
+    PATTERN_LOG("run done id=%s revision=%u", pattern->id, (unsigned)active_run_revision);
 }
 
 void game_movement_task(void *arg)
@@ -449,18 +629,40 @@ void game_movement_task(void *arg)
         }
 
         const pattern_t *pattern;
+        const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
+        uint8_t capture_every = pack->capture_every == 0 ? PATTERN_CAPTURE_EVERY : pack->capture_every;
+        const pattern_t *capture = find_capture_pattern(pack);
 
-        if (since_capture >= PATTERN_CAPTURE_EVERY) {
-            pattern = &capture_pattern;
+        int16_t selected = selected_pattern_index;
+        active_run_revision = pattern_control_revision;
+        if (selected >= 0 && selected < (int16_t)pack->pattern_count) {
+            pattern = &pack->patterns[selected];
+            PATTERN_LOG("choose reason=manual index=%d id=%s speed=%u revision=%u",
+                        selected,
+                        pattern->id,
+                        speed_percent,
+                        (unsigned)active_run_revision);
+        } else if (capture != NULL && since_capture >= capture_every) {
+            pattern = capture;
             since_capture = 0;
+            PATTERN_LOG("choose reason=capture id=%s speed=%u revision=%u",
+                        pattern->id,
+                        speed_percent,
+                        (unsigned)active_run_revision);
         } else {
             pattern = choose_weighted_pattern();
             since_capture++;
+            PATTERN_LOG("choose reason=weighted id=%s since_capture=%u/%u speed=%u revision=%u",
+                        pattern->id,
+                        since_capture,
+                        capture_every,
+                        speed_percent,
+                        (unsigned)active_run_revision);
         }
 
         run_pattern(pattern);
 
         hardware_laser_set(false);
-        wait_enabled_delay((uint32_t)random_range(800, 1800));
+        wait_enabled_delay(scaled_duration((uint32_t)random_range(800, 1800)));
     }
 }

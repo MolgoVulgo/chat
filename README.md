@@ -11,10 +11,17 @@ Le laser ne suit plus des mouvements aléatoires indépendants. Le code utilise 
 - les deux servos bougent ensemble dans un espace de coordonnées interne ;
 - les transitions sont interpolées avec une courbe `smoothstep` pour éviter les mouvements brusques ;
 - le laser peut s'éteindre pendant certains déplacements invisibles ;
-- plusieurs patterns simulent des comportements de proie : souris prudente, insecte nerveux, fuite vers un bord, cache-cache, patrouille, ellipse cassée, etc. ;
-- tous les 5 patterns, un pattern `capture` plus long est joué.
+- plusieurs patterns simulent des comportements de proie : souris lente au sol, exploration de bord, cachette, spirale lente, retour au calme, etc. ;
+- le pack par défaut est généré depuis `tools/examples/default_patterns.json`.
 
-Les patterns sont définis dans `src/game.c` sous forme de tableaux de `pattern_step_t`.
+Les patterns par défaut sont convertis en C dans `src/default_patterns.c` via :
+
+```sh
+python3 tools/generate_default_patterns_c.py
+```
+
+Par défaut, l'ESP utilise ce pack compilé pour préserver la RAM du serveur web.
+L'upload JSON direct côté firmware est désactivé par `PATTERN_JSON_UPLOAD_ENABLED`.
 
 ## Matériel
 
@@ -198,6 +205,38 @@ Pendant un scan, la page se recharge automatiquement toutes les 2 secondes jusqu
 
 La configuration WiFi est appliquee avec `wifi_station_set_config()`, donc elle est sauvegardee dans la zone de configuration flash du SDK ESP8266.
 
+### Page Patterns
+
+```text
+http://192.168.4.1/patterns
+http://<ip-esp>/patterns
+```
+
+Cette page permet :
+
+- afficher le pack actif ;
+- choisir un pattern précis ou revenir au mode automatique pondéré ;
+- régler la vitesse globale d'exécution ;
+- télécharger le pack actif généré depuis les structures runtime.
+
+Le pack compilé par défaut vient de `tools/examples/default_patterns.json`.
+Pour modifier ce pack, éditer le JSON avec l'outil Python puis régénérer
+`src/default_patterns.c`. L'upload JSON firmware est coupé par défaut afin de
+garder assez de heap pour le serveur HTTP, le WiFi et les sockets.
+
+Limites firmware principales :
+
+- schema supporté : `laser_cat_patterns.v1` ;
+- upload JSON firmware : `PATTERN_JSON_UPLOAD_ENABLED` ;
+- patterns maximum : `PATTERN_MAX_PATTERNS` ;
+- steps maximum : `PATTERN_MAX_TOTAL_STEPS` ;
+- vitesse globale : `PATTERN_SPEED_MIN_PERCENT` à `PATTERN_SPEED_MAX_PERCENT` ;
+- coordonnées JSON : `-1.0` à `+1.0`, converties en `-1000` à `+1000`.
+
+La vitesse est un pourcentage : `100%` garde les durées JSON, `150%` accélère
+les mouvements, `75%` les ralentit. Le réglage s'applique aux mouvements,
+pauses, jitter, transitions et pauses entre patterns.
+
 ## OTA
 
 Le firmware expose une page OTA :
@@ -290,8 +329,10 @@ Lister les patterns :
 Exporter une visualisation PNG d'un pattern :
 
 ```sh
-./start.sh view tools/examples/default_patterns.json --pattern mouse_cautious --output pattern.png
+./start.sh view tools/examples/default_patterns.json --pattern slow_floor_mouse --output pattern.png
 ```
+
+Remplacer `slow_floor_mouse` par un autre identifiant existant du pack si besoin.
 
 La GUI utilise `tkinter`. L'export PNG nécessite `matplotlib`. La validation,
 la liste et l'aperçu GUI utilisent uniquement la bibliothèque standard Python.
@@ -316,6 +357,9 @@ src/main.h       Pins, limites mécaniques, timing et constantes
 src/main.c       Bootstrap ESP8266 RTOS SDK et lancement des tâches
 src/hardware.*   GPIO, laser, conversion coordonnées -> servos, PWM servo
 src/game.*       Moteur de patterns et état ON/OFF du jouet
+src/pattern.h    Modèle compact partagé des patterns
+src/pattern_json.* Validation/conversion JSON uploadé vers structures runtime
+src/default_patterns.* Pack compilé généré depuis tools/examples/default_patterns.json
 src/web.*        WiFi AP/station, portail captif DNS, serveur HTTP
 src/ota.*        Etat OTA, ecriture flash du slot inactif, redemarrage
 src/app_util.h   Helpers partagés temps/coordonnées

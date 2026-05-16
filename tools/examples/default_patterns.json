@@ -961,205 +961,436 @@
       "category": "curved_motion",
       "weight": 7,
       "intensity": "low_medium",
-      "point_count": 28,
-      "description": "Pseudo-spirale lente, non circulaire parfaite. Permet de suivre avec les yeux sans surstimulation.",
+      "point_count": 61,
+      "description": "Spirale lente densifiee en petits segments pour eviter les longues lignes droites visibles avec le support pan/tilt a deux servos.",
       "steps": [
         {
           "type": "hold",
           "laser": true,
-          "x": 0.0,
-          "y": 0.0,
-          "duration_ms": 3000
+          "x": 0.033,
+          "y": -0.01,
+          "duration_ms": 2200
         },
         {
           "type": "move",
           "laser": true,
-          "x": 0.05,
-          "y": 0.02,
-          "duration_ms": 3600
+          "x": 0.041,
+          "y": -0.002,
+          "duration_ms": 1963
         },
         {
           "type": "move",
           "laser": true,
-          "x": 0.09,
-          "y": 0.07,
-          "duration_ms": 3900
+          "x": 0.045,
+          "y": 0.01,
+          "duration_ms": 1963
         },
         {
           "type": "move",
           "laser": true,
-          "x": 0.08,
-          "y": 0.14,
-          "duration_ms": 4200
+          "x": 0.044,
+          "y": 0.023,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.038,
+          "y": 0.036,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.025,
+          "y": 0.048,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.007,
+          "y": 0.057,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.015,
+          "y": 0.061,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.039,
+          "y": 0.058,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.062,
+          "y": 0.05,
+          "duration_ms": 1963
         },
         {
           "type": "hold",
           "laser": true,
-          "x": 0.08,
-          "y": 0.14,
-          "duration_ms": 2800
+          "x": -0.062,
+          "y": 0.05,
+          "duration_ms": 1200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.083,
+          "y": 0.034,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.097,
+          "y": 0.013,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.103,
+          "y": -0.012,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.099,
+          "y": -0.038,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.085,
+          "y": -0.064,
+          "duration_ms": 1963
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.061,
+          "y": -0.086,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.028,
+          "y": -0.102,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
           "x": 0.01,
-          "y": 0.18,
-          "duration_ms": 4300
+          "y": -0.109,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.07,
-          "y": 0.15,
-          "duration_ms": 4200
-        },
-        {
-          "type": "move",
-          "laser": true,
-          "x": -0.13,
-          "y": 0.08,
-          "duration_ms": 4300
+          "x": 0.051,
+          "y": -0.106,
+          "duration_ms": 1962
         },
         {
           "type": "hold",
           "laser": true,
-          "x": -0.13,
-          "y": 0.08,
-          "duration_ms": 3300
+          "x": 0.051,
+          "y": -0.106,
+          "duration_ms": 1200
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.15,
-          "y": -0.02,
-          "duration_ms": 4500
+          "x": 0.091,
+          "y": -0.092,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.1,
-          "y": -0.12,
-          "duration_ms": 4600
-        },
-        {
-          "type": "move",
-          "laser": true,
-          "x": 0.0,
-          "y": -0.17,
-          "duration_ms": 4600
-        },
-        {
-          "type": "hold",
-          "laser": true,
-          "x": 0.0,
-          "y": -0.17,
-          "duration_ms": 3400
-        },
-        {
-          "type": "move",
-          "laser": true,
-          "x": 0.13,
-          "y": -0.13,
-          "duration_ms": 4800
-        },
-        {
-          "type": "move",
-          "laser": true,
-          "x": 0.22,
-          "y": -0.03,
-          "duration_ms": 5000
-        },
-        {
-          "type": "move",
-          "laser": true,
-          "x": 0.23,
-          "y": 0.1,
-          "duration_ms": 5100
-        },
-        {
-          "type": "hold",
-          "laser": true,
-          "x": 0.23,
-          "y": 0.1,
-          "duration_ms": 3600
+          "x": 0.125,
+          "y": -0.068,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
           "x": 0.15,
-          "y": 0.22,
-          "duration_ms": 5200
+          "y": -0.036,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": 0.02,
-          "y": 0.28,
-          "duration_ms": 5200
+          "x": 0.162,
+          "y": 0.002,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.13,
-          "y": 0.23,
-          "duration_ms": 5200
+          "x": 0.159,
+          "y": 0.043,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.141,
+          "y": 0.083,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.108,
+          "y": 0.117,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.062,
+          "y": 0.143,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.008,
+          "y": 0.156,
+          "duration_ms": 1962
         },
         {
           "type": "hold",
           "laser": true,
-          "x": -0.13,
-          "y": 0.23,
-          "duration_ms": 4200
+          "x": 0.008,
+          "y": 0.156,
+          "duration_ms": 1200
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.26,
-          "y": 0.1,
-          "duration_ms": 5400
+          "x": -0.051,
+          "y": 0.155,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.28,
-          "y": -0.07,
-          "duration_ms": 5600
+          "x": -0.108,
+          "y": 0.14,
+          "duration_ms": 1962
         },
         {
           "type": "move",
           "laser": true,
-          "x": -0.18,
-          "y": -0.23,
-          "duration_ms": 5600
+          "x": -0.158,
+          "y": 0.11,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.196,
+          "y": 0.069,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.218,
+          "y": 0.018,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.22,
+          "y": -0.037,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.202,
+          "y": -0.091,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.164,
+          "y": -0.14,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.108,
+          "y": -0.178,
+          "duration_ms": 1962
         },
         {
           "type": "hold",
           "laser": true,
-          "x": -0.18,
-          "y": -0.23,
-          "duration_ms": 4300
+          "x": -0.108,
+          "y": -0.178,
+          "duration_ms": 1200
         },
         {
           "type": "move",
           "laser": true,
-          "x": 0.0,
-          "y": -0.3,
-          "duration_ms": 5200
+          "x": -0.04,
+          "y": -0.201,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.036,
+          "y": -0.206,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.112,
+          "y": -0.192,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.18,
+          "y": -0.16,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.235,
+          "y": -0.111,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.27,
+          "y": -0.049,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.281,
+          "y": 0.019,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.267,
+          "y": 0.089,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.227,
+          "y": 0.153,
+          "duration_ms": 1962
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.227,
+          "y": 0.153,
+          "duration_ms": 1200
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.165,
+          "y": 0.205,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.084,
+          "y": 0.241,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.007,
+          "y": 0.255,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.101,
+          "y": 0.246,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.19,
+          "y": 0.214,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.263,
+          "y": 0.161,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.315,
+          "y": 0.091,
+          "duration_ms": 1962
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": -0.34,
+          "y": 0.01,
+          "duration_ms": 1962
         },
         {
           "type": "jitter",
           "laser": true,
-          "x": 0.0,
-          "y": -0.3,
-          "duration_ms": 2600,
-          "amplitude": 0.01
+          "x": -0.34,
+          "y": 0.01,
+          "duration_ms": 2400,
+          "amplitude": 0.008
         },
         {
           "type": "hold",
           "laser": true,
-          "x": 0.0,
-          "y": -0.3,
-          "duration_ms": 5200
+          "x": -0.34,
+          "y": 0.01,
+          "duration_ms": 3600
         }
       ]
     },

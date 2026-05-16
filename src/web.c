@@ -6,9 +6,11 @@
 #include "logging.h"
 #include "main.h"
 #include "ota.h"
+#include "pattern_json.h"
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -34,6 +36,9 @@ static struct scan_config wifi_scan_config;
 
 static void http_send_wifi(int client);
 static void http_send_ota(int client);
+static void http_send_patterns(int client);
+static void http_send_patterns_download(int client);
+static void http_handle_patterns_upload(int client, const char *request, int request_len);
 static void http_handle_ota_upload(int client, const char *request, int request_len);
 
 static bool station_status_needs_config_ap(STATION_STATUS status)
@@ -428,6 +433,27 @@ static void append_wifi_options(char *body, size_t body_len, size_t *used)
     }
 }
 
+static void append_pattern_options(char *body, size_t body_len, size_t *used, const pattern_pack_t *pack)
+{
+    int16_t selected = game_get_selected_pattern();
+
+    appendf(body, body_len, used, "<option value='-1'%s>Auto / aleatoire pondere</option>",
+            selected < 0 ? " selected" : "");
+
+    if (pack == NULL) {
+        return;
+    }
+
+    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        appendf(body, body_len, used, "<option value='%d'%s>",
+                i, selected == (int16_t)i ? " selected" : "");
+        append_escaped(body, body_len, used, pack->patterns[i].id);
+        appendf(body, body_len, used, " - ");
+        append_escaped(body, body_len, used, pack->patterns[i].name);
+        appendf(body, body_len, used, "</option>");
+    }
+}
+
 static void http_send_home(int client)
 {
     size_t used = 0;
@@ -443,7 +469,7 @@ static void http_send_home(int client)
             "<p>WiFi: <strong>%s</strong></p>"
             "<p>IP: <strong>%s</strong></p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/ota'>OTA</a></p>",
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>",
             game_is_enabled() ? "ON" : "OFF",
             hardware_laser_is_on() ? "ON" : "OFF",
             station_status_text(),
@@ -481,7 +507,7 @@ static void http_send_wifi(int client)
             "<p>Jouet: <strong>%s</strong></p>"
             "<p>Laser: <strong>%s</strong></p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a></p>"
+            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
             "<p><a href='/scan'>Scanner les reseaux</a></p>"
@@ -502,7 +528,7 @@ static void http_send_wifi(int client)
             "<div class='field'><label>Mot de passe</label><input name='pass' type='password' placeholder='Mot de passe'></div>"
             "<button type='submit'>Connecter</button>"
             "</form>"
-            "<p><a href='/wifi'>Rafraichir</a><a href='/ota'>OTA</a></p>");
+            "<p><a href='/wifi'>Rafraichir</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>");
     append_page_end(http_body, sizeof(http_body), &used);
 
     WEB_DEBUG_LOG("wifi simple page served bytes=%d scan_count=%d scan_running=%d scan_requested=%d",
@@ -544,6 +570,203 @@ static void http_send_ota(int client)
 
     WEB_DEBUG_LOG("ota page served bytes=%d", (int)strlen(http_body));
     http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static void http_send_patterns(int client)
+{
+    const pattern_pack_t *pack = game_get_pattern_pack();
+    size_t used = 0;
+    uint16_t step_count = 0;
+
+    if (pack != NULL) {
+        for (uint8_t i = 0; i < pack->pattern_count; i++) {
+            step_count += pack->patterns[i].step_count;
+        }
+    }
+
+    http_body[0] = '\0';
+    append_page_start(http_body, sizeof(http_body), &used, "Patterns JSON");
+    appendf(http_body, sizeof(http_body), &used,
+            "<p>Etat: <strong>");
+    append_escaped(http_body, sizeof(http_body), &used, game_get_pattern_status());
+    appendf(http_body, sizeof(http_body), &used,
+            "</strong></p><p>Source: <strong>");
+    append_escaped(http_body, sizeof(http_body), &used,
+                   pack == NULL || pack->source_name == NULL ? "aucune" : pack->source_name);
+    appendf(http_body, sizeof(http_body), &used,
+            "</strong></p>"
+            "<p>Patterns: %u / Steps: %u / Capture every: %u</p>"
+            "<p>Selection: <strong>",
+            pack == NULL ? 0 : pack->pattern_count,
+            step_count,
+            pack == NULL ? 0 : pack->capture_every);
+    append_escaped(http_body, sizeof(http_body), &used, game_get_selected_pattern_id());
+    appendf(http_body, sizeof(http_body), &used,
+            "</strong></p>"
+            "<form action='/patterns/select' method='get'>"
+            "<div class='field'><label>Pattern a jouer</label><select name='index'>");
+    append_pattern_options(http_body, sizeof(http_body), &used, pack);
+    appendf(http_body, sizeof(http_body), &used,
+            "</select></div><button type='submit'>Appliquer le pattern</button></form>"
+            "<form action='/patterns/speed' method='get'>"
+            "<div class='field'><label>Vitesse globale: <strong>%u%%</strong></label>"
+            "<input name='value' type='number' min='%u' max='%u' step='5' value='%u'></div>"
+            "<button type='submit'>Appliquer la vitesse</button>"
+            "<a href='/patterns/speed?value=75'>75%%</a>"
+            "<a href='/patterns/speed?value=100'>100%%</a>"
+            "<a href='/patterns/speed?value=150'>150%%</a>"
+            "</form>",
+            game_get_speed_percent(),
+            PATTERN_SPEED_MIN_PERCENT,
+            PATTERN_SPEED_MAX_PERCENT,
+            game_get_speed_percent());
+#if PATTERN_JSON_UPLOAD_ENABLED
+    appendf(http_body, sizeof(http_body), &used,
+            "<div class='field'><input id='patterns_file' type='file' accept='.json,application/json'></div>"
+            "<button id='upload' type='button'>Uploader et activer</button>"
+            "<p id='result' class='muted'></p>"
+            "<script>"
+            "const f=document.getElementById('patterns_file'),r=document.getElementById('result');"
+            "document.getElementById('upload').onclick=async()=>{"
+            "if(!f.files.length){r.textContent='Selectionner un fichier JSON';return;}"
+            "r.textContent='Validation et activation...';"
+            "try{const x=await fetch('/patterns/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:f.files[0]});"
+            "r.textContent=await x.text();if(x.ok)setTimeout(()=>location.reload(),900);}"
+            "catch(e){r.textContent='Echec upload';}"
+            "};"
+            "</script>");
+#else
+    appendf(http_body, sizeof(http_body), &used,
+            "<p class='muted'>Upload JSON firmware desactive pour garder le serveur stable. "
+            "Regenerer le pack compile depuis l'outil Python.</p>");
+#endif
+    appendf(http_body, sizeof(http_body), &used,
+            "<p><a href='/patterns/download'>Telecharger le pack actif</a><a href='/'>Accueil</a></p>");
+    append_page_end(http_body, sizeof(http_body), &used);
+
+    http_send_response(client, "200 OK", "text/html; charset=utf-8", http_body);
+}
+
+static const char *step_type_name(pattern_step_type_t type)
+{
+    switch (type) {
+    case STEP_HOLD:
+        return "hold";
+    case STEP_MOVE:
+        return "move";
+    case STEP_JITTER:
+        return "jitter";
+    case STEP_OFF_HOLD:
+        return "off_hold";
+    case STEP_OFF_MOVE:
+        return "off_move";
+    default:
+        return "hold";
+    }
+}
+
+static bool step_has_json_position(pattern_step_type_t type)
+{
+    return type == STEP_HOLD ||
+           type == STEP_MOVE ||
+           type == STEP_JITTER ||
+           type == STEP_OFF_MOVE;
+}
+
+static void http_send_json_string(int client, const char *s)
+{
+    http_send(client, "\"");
+    while (s != NULL && *s != '\0') {
+        char chunk[8];
+        switch (*s) {
+        case '\\':
+            http_send(client, "\\\\");
+            break;
+        case '"':
+            http_send(client, "\\\"");
+            break;
+        case '\n':
+            http_send(client, "\\n");
+            break;
+        case '\r':
+            http_send(client, "\\r");
+            break;
+        case '\t':
+            http_send(client, "\\t");
+            break;
+        default:
+            snprintf(chunk, sizeof(chunk), "%c", *s);
+            http_send(client, chunk);
+            break;
+        }
+        s++;
+    }
+    http_send(client, "\"");
+}
+
+static void http_send_patterns_download(int client)
+{
+    const pattern_pack_t *pack = game_get_pattern_pack();
+    char chunk[256];
+
+    const char *header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n"
+        "\r\n";
+    http_send(client, header);
+
+    if (pack == NULL) {
+        http_send(client, "{}\n");
+        return;
+    }
+
+    snprintf(chunk, sizeof(chunk),
+             "{\"schema\":\"%s\",\"runtime\":{\"selection_mode\":\"weighted_random\",\"capture_every\":%u},\"patterns\":[",
+             PATTERN_SCHEMA, pack->capture_every);
+    http_send(client, chunk);
+
+    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        const pattern_t *pattern = &pack->patterns[i];
+        snprintf(chunk, sizeof(chunk),
+                 "%s{\"id\":",
+                 i == 0 ? "" : ",");
+        http_send(client, chunk);
+        http_send_json_string(client, pattern->id);
+        http_send(client, ",\"name\":");
+        http_send_json_string(client, pattern->name);
+        snprintf(chunk, sizeof(chunk), ",\"weight\":%u,\"steps\":[",
+                 pattern->weight);
+        http_send(client, chunk);
+
+        for (uint16_t j = 0; j < pattern->step_count; j++) {
+            const pattern_step_t *step = &pattern->steps[j];
+            snprintf(chunk, sizeof(chunk),
+                     "%s{\"type\":\"%s\",\"laser\":%s,\"duration_ms\":%u",
+                     j == 0 ? "" : ",",
+                     step_type_name(step->type),
+                     step->laser ? "true" : "false",
+                     step->duration_ms);
+            http_send(client, chunk);
+
+            if (step_has_json_position(step->type)) {
+                snprintf(chunk, sizeof(chunk), ",\"x\":%.3f,\"y\":%.3f",
+                         (double)step->x / 1000.0,
+                         (double)step->y / 1000.0);
+                http_send(client, chunk);
+            }
+            if (step->type == STEP_JITTER) {
+                snprintf(chunk, sizeof(chunk), ",\"amplitude\":%.3f",
+                         (double)step->amplitude / 1000.0);
+                http_send(client, chunk);
+            }
+            http_send(client, "}");
+        }
+        http_send(client, "]}");
+    }
+
+    http_send(client, "]}\n");
 }
 
 static void http_send_ota_status(int client)
@@ -656,6 +879,60 @@ static void http_handle_connect_request(int client, const char *query)
     http_redirect(client, "/wifi");
 }
 
+static void http_handle_patterns_select_request(int client, const char *query)
+{
+    char value[16];
+
+    WEB_LOG("pattern select request query=%s current_index=%d current_id=%s",
+            query,
+            game_get_selected_pattern(),
+            game_get_selected_pattern_id());
+    query_value(query, "index", value, sizeof(value));
+    if (value[0] != '\0') {
+        int index = atoi(value);
+        if (!game_set_selected_pattern((int16_t)index)) {
+            WEB_LOG("pattern select rejected index=%d current_index=%d current_id=%s",
+                    index,
+                    game_get_selected_pattern(),
+                    game_get_selected_pattern_id());
+        } else {
+            WEB_LOG("pattern select applied requested=%d current_index=%d current_id=%s",
+                    index,
+                    game_get_selected_pattern(),
+                    game_get_selected_pattern_id());
+        }
+    } else {
+        WEB_LOG("pattern select ignored missing index query=%s", query);
+    }
+
+    http_redirect(client, "/patterns");
+}
+
+static void http_handle_patterns_speed_request(int client, const char *query)
+{
+    char value[16];
+
+    WEB_LOG("pattern speed request query=%s current_speed=%u",
+            query,
+            game_get_speed_percent());
+    query_value(query, "value", value, sizeof(value));
+    if (value[0] != '\0') {
+        int speed = atoi(value);
+        if (speed > 0) {
+            game_set_speed_percent((uint16_t)speed);
+            WEB_LOG("pattern speed applied requested=%d current_speed=%u",
+                    speed,
+                    game_get_speed_percent());
+        } else {
+            WEB_LOG("pattern speed ignored invalid value=%s", value);
+        }
+    } else {
+        WEB_LOG("pattern speed ignored missing value query=%s", query);
+    }
+
+    http_redirect(client, "/patterns");
+}
+
 static const char *http_find_header_value(const char *request, const char *name)
 {
     size_t name_len = strlen(name);
@@ -762,6 +1039,73 @@ static void http_handle_ota_upload(int client, const char *request, int request_
                        "OTA recue. Redemarrage en cours.\n");
 }
 
+static void http_handle_patterns_upload(int client, const char *request, int request_len)
+{
+#if !PATTERN_JSON_UPLOAD_ENABLED
+    (void)request;
+    (void)request_len;
+    http_send_response(client, "503 Service Unavailable", "text/plain; charset=utf-8",
+                       "Upload JSON firmware desactive pour garder le serveur stable.\n");
+#else
+    uint32_t content_length = 0;
+    int body_offset = http_header_body_offset(request, request_len);
+
+    if (body_offset < 0 || !http_content_length(request, &content_length)) {
+        http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8",
+                           "Headers JSON invalides.\n");
+        return;
+    }
+    if (content_length == 0 || content_length > PATTERN_JSON_UPLOAD_MAX_BYTES) {
+        http_send_response(client, "413 Payload Too Large", "text/plain; charset=utf-8",
+                           "JSON trop grand pour validation RAM.\n");
+        return;
+    }
+
+    char *json = (char *)malloc(content_length + 1);
+    if (json == NULL) {
+        http_send_response(client, "500 Internal Server Error", "text/plain; charset=utf-8",
+                           "Memoire insuffisante.\n");
+        return;
+    }
+
+    uint32_t received = 0;
+    int initial_body_len = request_len - body_offset;
+    if (initial_body_len > 0) {
+        if ((uint32_t)initial_body_len > content_length) {
+            initial_body_len = (int)content_length;
+        }
+        memcpy(json, request + body_offset, (size_t)initial_body_len);
+        received = (uint32_t)initial_body_len;
+    }
+
+    while (received < content_length) {
+        uint32_t remaining = content_length - received;
+        int to_read = remaining > 1024u ? 1024 : (int)remaining;
+        int n = recv(client, json + received, to_read, 0);
+        if (n <= 0) {
+            free(json);
+            http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8",
+                               "Connexion fermee pendant upload JSON.\n");
+            return;
+        }
+        received += (uint32_t)n;
+    }
+    json[content_length] = '\0';
+
+    const pattern_pack_t *pack = NULL;
+    char message[96];
+    if (!pattern_json_load(json, content_length, &pack, message, sizeof(message))) {
+        free(json);
+        http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8", message);
+        return;
+    }
+
+    free(json);
+    game_use_pattern_pack(pack, message);
+    http_send_response(client, "200 OK", "text/plain; charset=utf-8", game_get_pattern_status());
+#endif
+}
+
 static bool http_reject_when_ota_running(int client)
 {
     if (!ota_is_running()) {
@@ -808,6 +1152,14 @@ static void http_handle_request(int client, char *request, int request_len)
     if (strcmp(method, "POST") == 0 && strcmp(path, "/ota/upload") == 0) {
         WEB_LOG("ota upload requested");
         http_handle_ota_upload(client, request, request_len);
+    } else if (strcmp(method, "POST") == 0 && strcmp(path, "/patterns/upload") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        WEB_LOG("patterns upload requested");
+        game_set_enabled(false);
+        hardware_laser_set(false);
+        http_handle_patterns_upload(client, request, request_len);
     } else if (strcmp(path, "/on") == 0) {
         if (http_reject_when_ota_running(client)) {
             return;
@@ -855,6 +1207,22 @@ static void http_handle_request(int client, char *request, int request_len)
         http_send_ota(client);
     } else if (strcmp(path, "/ota/status") == 0) {
         http_send_ota_status(client);
+    } else if (strcmp(path, "/patterns") == 0) {
+        WEB_LOG("patterns page requested");
+        http_send_patterns(client);
+    } else if (strcmp(path, "/patterns/download") == 0) {
+        WEB_LOG("patterns download requested");
+        http_send_patterns_download(client);
+    } else if (strncmp(path, "/patterns/select?", 17) == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        http_handle_patterns_select_request(client, path + 17);
+    } else if (strncmp(path, "/patterns/speed?", 16) == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        http_handle_patterns_speed_request(client, path + 16);
     } else if (strcmp(path, "/wifi") == 0) {
         WEB_LOG("wifi page requested status=%s count=%d running=%d",
                 station_status_text(), wifi_scan_count, wifi_scan_running);

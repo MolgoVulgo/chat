@@ -480,6 +480,20 @@ Décisions à figer pour stabiliser le projet :
 | Sécurité laser | OFF par défaut, OFF sur erreur |
 | Premier objectif | MVP upload + validation + exécution active.json |
 
+## 16.1 Décision d'implémentation actuelle
+
+L'implémentation firmware actuelle utilise une stratégie hybride :
+
+- `tools/examples/default_patterns.json` reste la source utilisateur du pack par défaut ;
+- `tools/generate_default_patterns_c.py` convertit ce JSON en `src/default_patterns.c` ;
+- l'ESP démarre sur ce pack compilé compact ;
+- `/patterns` permet de choisir un pattern, régler la vitesse et télécharger le pack actif ;
+- l'upload JSON firmware est désactivé par défaut pour préserver la stabilité du serveur web ;
+- aucun filesystem persistant n'est encore monté côté ESP8266.
+
+Conséquence : le flux fiable actuel est édition/validation avec l'outil Python,
+puis régénération du pack C compilé qui reste le fallback sûr au boot.
+
 ## 17. MVP
 
 Le MVP doit livrer uniquement :
@@ -507,4 +521,3 @@ Non inclus dans la première version :
 - calibration automatique caméra.
 
 Ces fonctions peuvent être ajoutées ensuite, mais ne doivent pas polluer la base fonctionnelle JSON + moteur + visualisation.
-
