@@ -5,6 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from tools.chatchat_patterns.binary import (
+    MAGIC,
+    binary_pack_from_pattern_pack,
+    export_dat_file,
+    normalized_to_v2_coord,
+    pack_binary,
+    read_dat_bytes,
+)
 from tools.chatchat_patterns.geometry import (
     normalized_to_firmware,
     pattern_duration_ms,
@@ -105,6 +113,12 @@ def test_coordinate_conversion():
 
     with pytest.raises(ValueError):
         normalized_to_firmware(1.01)
+
+
+def test_v2_coordinate_conversion():
+    assert normalized_to_v2_coord(-1.0) == 0
+    assert normalized_to_v2_coord(0.0) == 500
+    assert normalized_to_v2_coord(1.0) == 1000
 
 
 def test_pattern_geometry_extracts_duration_segments_pauses_and_jitter():
@@ -245,6 +259,75 @@ def test_cli_help_lists_gui_command():
 
     assert completed.returncode == 0
     assert "gui" in completed.stdout
+
+
+def test_binary_pack_roundtrip_from_minimal_pack():
+    pack = pattern_pack_from_data(MINIMAL_PACK)
+    binary_pack = binary_pack_from_pattern_pack(pack)
+    data = pack_binary(binary_pack)
+    loaded = read_dat_bytes(data)
+
+    assert data[:4] == MAGIC
+    assert len(loaded.patterns) == 1
+    assert loaded.patterns[0].pattern_id == "mouse_cautious"
+    assert loaded.patterns[0].points[0].x == 375
+    assert loaded.patterns[0].points[0].y == 425
+    assert loaded.patterns[0].points[0].laser == 1
+    assert loaded.patterns[0].points[2].laser == 0
+
+
+def test_binary_pack_rejects_bad_checksum():
+    pack = pattern_pack_from_data(MINIMAL_PACK)
+    data = bytearray(pack_binary(binary_pack_from_pattern_pack(pack)))
+    data[-1] ^= 0x01
+
+    with pytest.raises(ValueError, match="checksum"):
+        read_dat_bytes(bytes(data))
+
+
+def test_cli_export_and_inspect_dat(tmp_path):
+    output = tmp_path / "patterns.dat"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.chatchat_patterns",
+            "export-dat",
+            str(VALID_EXAMPLE),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert output.exists()
+    assert "DAT ecrit" in completed.stdout
+
+    inspected = subprocess.run(
+        [sys.executable, "-m", "tools.chatchat_patterns", "inspect-dat", str(output)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert inspected.returncode == 0
+    assert "OK" in inspected.stdout
+    assert "slow_floor_mouse" in inspected.stdout
+
+
+def test_export_dat_file_returns_metadata(tmp_path):
+    output = tmp_path / "patterns.dat"
+    binary_pack = export_dat_file(VALID_EXAMPLE, output)
+
+    assert output.exists()
+    assert len(binary_pack.patterns) == 13
+    assert binary_pack.point_count == 334
+    assert binary_pack.file_size == output.stat().st_size
 
 
 def test_visualizer_export_png_when_matplotlib_available(tmp_path):

@@ -6,6 +6,7 @@ from tkinter import BOTH, END, LEFT, RIGHT, X, filedialog, messagebox
 from tkinter import Tk, Canvas, Listbox, StringVar, Text
 from tkinter import ttk
 
+from .binary import export_dat_file, read_dat_file, validate_binary_export_file
 from .geometry import pattern_duration_ms, pattern_jitter_zones, pattern_pauses, pattern_segments
 from .model import Pattern, PatternPack, pattern_pack_from_data, read_json_file
 from .validator import ValidationResult, validate_pack_data
@@ -39,6 +40,8 @@ class PatternGui:
         ttk.Button(toolbar, text="Valider", command=self.validate_editor).pack(side=LEFT, padx=(0, 6))
         ttk.Button(toolbar, text="Sauver", command=self.save_file).pack(side=LEFT, padx=(0, 6))
         ttk.Button(toolbar, text="Sauver sous", command=self.save_file_as).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(toolbar, text="Export DAT", command=self.export_dat).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(toolbar, text="Inspect DAT", command=self.inspect_dat).pack(side=LEFT, padx=(0, 6))
         ttk.Label(toolbar, textvariable=self.status).pack(side=LEFT, padx=(12, 0))
 
         main = ttk.PanedWindow(self.root, orient="horizontal")
@@ -160,6 +163,77 @@ class PatternGui:
             self.path = Path(filename)
             self._write_editor_to(self.path)
 
+    def export_dat(self) -> None:
+        if not self.validate_editor_for_action():
+            return
+
+        filename = filedialog.asksaveasfilename(
+            title="Exporter patterns.dat",
+            defaultextension=".dat",
+            filetypes=(("Patterns DAT", "*.dat"), ("Tous les fichiers", "*.*")),
+            initialfile="patterns.dat",
+        )
+        if not filename:
+            return
+
+        temp_json = self._current_json_path_for_export()
+        if temp_json is None:
+            return
+
+        try:
+            result = validate_binary_export_file(temp_json)
+            if not result.ok:
+                self._render_binary_validation_errors(result)
+                messagebox.showerror("Export impossible", "Le pack contient des erreurs bloquantes.")
+                return
+            binary_pack = export_dat_file(temp_json, filename)
+        except Exception as exc:
+            messagebox.showerror("Export impossible", str(exc))
+            return
+
+        self._set_validation_text(
+            self._validation_text_with_binary_summary(
+                f"DAT ecrit: {filename}\n"
+                f"patterns={len(binary_pack.patterns)} points={binary_pack.point_count} "
+                f"bytes={binary_pack.file_size} crc32=0x{binary_pack.checksum_crc32:08x}"
+            )
+        )
+        self.status.set(f"DAT exporte: {filename}")
+        messagebox.showinfo("Export DAT", f"patterns.dat exporte:\n{filename}")
+
+    def inspect_dat(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Inspecter patterns.dat",
+            filetypes=(("Patterns DAT", "*.dat"), ("Tous les fichiers", "*.*")),
+        )
+        if not filename:
+            return
+
+        try:
+            binary_pack = read_dat_file(filename)
+        except Exception as exc:
+            self._set_validation_text(f"ERROR {exc}")
+            self.status.set("DAT invalide")
+            messagebox.showerror("DAT invalide", str(exc))
+            return
+
+        lines = [
+            "DAT OK",
+            f"fichier: {filename}",
+            f"patterns={len(binary_pack.patterns)}",
+            f"points={binary_pack.point_count}",
+            f"bytes={binary_pack.file_size}",
+            f"crc32=0x{binary_pack.checksum_crc32:08x}",
+            "",
+        ]
+        for pattern in binary_pack.patterns:
+            lines.append(
+                f"{pattern.pattern_id}: weight={pattern.weight} "
+                f"points={len(pattern.points)} duration_ms={pattern.duration_total_ms}"
+            )
+        self._set_validation_text("\n".join(lines))
+        self.status.set(f"DAT OK: {len(binary_pack.patterns)} pattern(s)")
+
     def _write_editor_to(self, path: Path) -> None:
         try:
             data = json.loads(self.editor.get("1.0", END))
@@ -169,6 +243,40 @@ class PatternGui:
             return
         self.validate_editor()
         self.status.set(f"Sauve: {path}")
+
+    def validate_editor_for_action(self) -> bool:
+        self.validate_editor()
+        if self.data is None or self.pack is None or not self.validation.ok:
+            messagebox.showerror("Validation requise", "Corriger le JSON avant cette action.")
+            return False
+        return True
+
+    def _current_json_path_for_export(self) -> Path | None:
+        if self.path is None:
+            filename = filedialog.asksaveasfilename(
+                title="Sauver le JSON avant export",
+                defaultextension=".json",
+                filetypes=(("JSON", "*.json"), ("Tous les fichiers", "*.*")),
+            )
+            if not filename:
+                return None
+            self.path = Path(filename)
+        self._write_editor_to(self.path)
+        return self.path
+
+    def _render_binary_validation_errors(self, result: ValidationResult) -> None:
+        lines = []
+        for issue in result.errors:
+            lines.append(f"ERROR {issue.format()}")
+        for issue in result.warnings:
+            lines.append(f"WARN {issue.format()}")
+        self._set_validation_text("\n".join(lines) if lines else "OK")
+
+    def _validation_text_with_binary_summary(self, summary: str) -> str:
+        current = self.validation_text.get("1.0", END).strip()
+        if current:
+            return f"{summary}\n\n{current}"
+        return summary
 
     def _reload_pattern_list(self) -> None:
         selected = self.selected_pattern_id()
