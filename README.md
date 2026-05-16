@@ -109,8 +109,15 @@ Le jeu est lance sous forme de session bornee :
 
 - `GAME_SESSION_MAX_MS` limite la duree d'une session ;
 - `GAME_COOLDOWN_MS` bloque une relance immediate apres une fin automatique ;
+- au demarrage d'une session, le laser est force ON et reste actif pendant le
+  jeu ;
+- seuls les steps `off_hold` et `off_move` coupent explicitement le laser ;
 - l'arret manuel coupe immediatement le jeu et le laser ;
-- le laser manuel est une impulsion bornee, pas un etat ON permanent.
+- le bouton `LASER ON TEST` coupe le jeu et allume le laser pour test jusqu'a
+  `LASER OFF` ou `LASER_TEST_MAX_MS` ;
+- le bouton `TEST INVERSE` force le niveau GPIO oppose pour verifier rapidement
+  si `LASER_ACTIVE_LOW` doit etre inverse ;
+- le pulse laser court reste reserve aux builds `DEBUG_HARDWARE_ENABLED=1`.
 
 Le pilotage est fait par :
 
@@ -185,7 +192,10 @@ Cette page permet :
 - de voir l'etat du jouet : `ON` ou `OFF` ;
 - d'activer le jouet avec `/on` ;
 - de couper le jouet avec `/off` ;
-- de lancer une impulsion laser courte avec `/laser/pulse?ms=1000` ;
+- de tester le laser avec `/laser/test/on`, puis de l'eteindre avec
+  `/laser/off` ;
+- de tester le niveau GPIO inverse avec `/laser/test/invert` si le jeu bouge
+  mais que le laser reste eteint ;
 - d'aller vers la configuration WiFi.
 
 Quand le jouet est coupe :

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#include "main.h"
 #include "pattern.h"
 
 typedef enum {
@@ -19,7 +20,12 @@ game_state_t game_get_state(void);
 const char *game_get_state_text(void);
 uint32_t game_get_cooldown_remaining_ms(void);
 uint32_t game_get_session_remaining_ms(void);
+#if DEBUG_HARDWARE_ENABLED
 bool game_laser_pulse(uint16_t duration_ms);
+#endif
+bool game_laser_test_on(void);
+bool game_laser_test_on_inverted(void);
+void game_laser_test_off(void);
 void game_use_default_patterns(void);
 bool game_use_pattern_pack(const pattern_pack_t *pack, const char *status);
 const pattern_pack_t *game_get_pattern_pack(void);

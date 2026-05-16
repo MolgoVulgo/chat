@@ -113,6 +113,16 @@ void hardware_laser_set(bool enabled)
                  laser_gpio_level(enabled));
 }
 
+void hardware_laser_set_raw_level(bool high)
+{
+    laser_on = high == laser_gpio_level(true);
+    GPIO_OUTPUT_SET(LASER_GPIO, high ? 1 : 0);
+    HARDWARE_LOG("laser raw gpio=%d level=%d logical=%s",
+                 LASER_GPIO,
+                 high ? 1 : 0,
+                 laser_on ? "ON" : "OFF");
+}
+
 bool hardware_laser_is_on(void)
 {
     return laser_on;

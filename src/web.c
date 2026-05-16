@@ -473,7 +473,13 @@ static void http_send_home(int client)
             "<p>WiFi: <strong>%s</strong></p>"
             "<p>IP: <strong>%s</strong></p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/pulse?ms=1000'>Pulse laser</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>",
+            "<p>"
+            "<a href='/laser/test/on'>LASER ON TEST</a>"
+            "<a href='/laser/test/invert'>TEST INVERSE</a>"
+#if DEBUG_HARDWARE_ENABLED
+            "<a href='/laser/pulse?ms=1000'>Pulse laser</a>"
+#endif
+            "<a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>",
             game_is_enabled() ? "ON" : "OFF",
             hardware_laser_is_on() ? "ON" : "OFF",
             game_get_state_text(),
@@ -515,7 +521,13 @@ static void http_send_wifi(int client)
             "<p>Laser: <strong>%s</strong></p>"
             "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/pulse?ms=1000'>Pulse laser</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>"
+            "<p>"
+            "<a href='/laser/test/on'>LASER ON TEST</a>"
+            "<a href='/laser/test/invert'>TEST INVERSE</a>"
+#if DEBUG_HARDWARE_ENABLED
+            "<a href='/laser/pulse?ms=1000'>Pulse laser</a>"
+#endif
+            "<a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
             "<p><a href='/scan'>Scanner les reseaux</a></p>"
@@ -950,6 +962,7 @@ static void http_handle_patterns_speed_request(int client, const char *query)
 
 static void http_handle_laser_pulse_request(int client, const char *query)
 {
+#if DEBUG_HARDWARE_ENABLED
     char value[16];
     uint16_t duration_ms = LASER_PULSE_DEFAULT_MS;
 
@@ -966,6 +979,11 @@ static void http_handle_laser_pulse_request(int client, const char *query)
             duration_ms,
             game_get_state_text());
     http_redirect(client, "/");
+#else
+    (void)query;
+    http_send_response(client, "404 Not Found", "text/plain; charset=utf-8",
+                       "Debug hardware desactive.\n");
+#endif
 }
 
 static const char *http_find_header_value(const char *request, const char *name)
@@ -1219,19 +1237,32 @@ static void http_handle_request(int client, char *request, int request_len)
             return;
         }
         http_handle_laser_pulse_request(client, path + 13);
+    } else if (strcmp(path, "/laser/test/on") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_laser_test_on();
+        WEB_LOG("laser test on requested state=%s", game_get_state_text());
+        http_redirect(client, "/");
+    } else if (strcmp(path, "/laser/test/invert") == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        game_laser_test_on_inverted();
+        WEB_LOG("laser inverted test requested state=%s", game_get_state_text());
+        http_redirect(client, "/");
     } else if (strcmp(path, "/laser/on") == 0) {
         if (http_reject_when_ota_running(client)) {
             return;
         }
-        game_laser_pulse(LASER_PULSE_DEFAULT_MS);
-        WEB_LOG("legacy laser on mapped to pulse state=%s", game_get_state_text());
+        game_laser_test_on();
+        WEB_LOG("legacy laser on mapped to test state=%s", game_get_state_text());
         http_redirect(client, "/");
     } else if (strcmp(path, "/laser/off") == 0) {
         if (http_reject_when_ota_running(client)) {
             return;
         }
-        game_set_enabled(false);
-        hardware_laser_set(false);
+        game_laser_test_off();
         WEB_LOG("laser disabled from web");
         http_redirect(client, "/");
     } else if (strcmp(path, "/scan") == 0) {
@@ -1331,16 +1362,18 @@ static int dns_question_end(const uint8_t *packet, int len)
     return pos + 5;
 }
 
-void web_dns_server_task(void *arg)
+static int dns_open_server(void)
 {
-    (void)arg;
-
     int server = socket(AF_INET, SOCK_DGRAM, 0);
     if (server < 0) {
         WEB_LOG("dns socket failed");
-        vTaskDelete(NULL);
-        return;
+        return -1;
     }
+
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    setsockopt(server, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -1351,13 +1384,38 @@ void web_dns_server_task(void *arg)
     if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         WEB_LOG("dns bind failed");
         closesocket(server);
-        vTaskDelete(NULL);
-        return;
+        return -1;
     }
 
     WEB_LOG("captive dns ready");
+    return server;
+}
+
+void web_dns_server_task(void *arg)
+{
+    (void)arg;
+
+    int server = -1;
 
     while (true) {
+        if (!config_ap_active) {
+            if (server >= 0) {
+                closesocket(server);
+                server = -1;
+                WEB_LOG("captive dns stopped ap inactive");
+            }
+            vTaskDelay(ms_to_ticks_min1(1000));
+            continue;
+        }
+
+        if (server < 0) {
+            server = dns_open_server();
+            if (server < 0) {
+                vTaskDelay(ms_to_ticks_min1(1000));
+                continue;
+            }
+        }
+
         uint8_t packet[256];
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);

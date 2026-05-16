@@ -156,6 +156,23 @@ def test_behavior_warning_for_long_fast_step_and_on_ratio():
     assert any("sequence laser ON longue" in issue.message for issue in result.warnings)
 
 
+def test_behavior_errors_for_extreme_motion_and_duration():
+    data = json.loads(json.dumps(MINIMAL_PACK))
+    steps = data["patterns"][0]["steps"]
+    steps[:] = [
+        {"type": "hold", "laser": True, "x": -1.0, "y": -1.0, "duration_ms": 3000},
+        {"type": "move", "laser": True, "x": 1.0, "y": 1.0, "duration_ms": 3000},
+        {"type": "hold", "laser": True, "x": 1.0, "y": 1.0, "duration_ms": 181000},
+    ]
+
+    result = validate_pack_data(data)
+
+    assert not result.ok
+    assert any("distance excessive" in issue.message for issue in result.errors)
+    assert any("vitesse relative excessive" in issue.message for issue in result.errors)
+    assert any("duree pattern trop longue" in issue.message for issue in result.errors)
+
+
 def test_firmware_limits_reject_excessive_ids_and_weight():
     data = json.loads(json.dumps(MINIMAL_PACK))
     data["patterns"][0]["id"] = "x" * 40

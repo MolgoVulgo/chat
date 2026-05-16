@@ -20,6 +20,8 @@ MAX_TOTAL_STEPS = 360
 MAX_PATTERN_ID_LEN = 31
 MAX_PATTERN_NAME_LEN = 47
 MAX_STEP_COUNT = 65535
+MAX_WEIGHT = 255
+MAX_CAPTURE_EVERY = 255
 
 
 def coord_to_int(value):
@@ -51,6 +53,8 @@ def main():
     capture_every = int(data.get("runtime", {}).get("capture_every", 0) or 0)
     total_steps = sum(len(pattern.get("steps", [])) for pattern in patterns)
 
+    if capture_every < 0 or capture_every > MAX_CAPTURE_EVERY:
+        raise SystemExit(f"capture_every out of firmware range: {capture_every} > {MAX_CAPTURE_EVERY}")
     if len(patterns) > MAX_PATTERN_COUNT:
         raise SystemExit(f"too many patterns for firmware: {len(patterns)} > {MAX_PATTERN_COUNT}")
     if total_steps > MAX_TOTAL_STEPS:
@@ -60,6 +64,9 @@ def main():
             raise SystemExit(f"pattern id too long: {pattern['id']}")
         if len(str(pattern.get("name", pattern["id"]))) > MAX_PATTERN_NAME_LEN:
             raise SystemExit(f"pattern name too long: {pattern['id']}")
+        weight = int(pattern.get("weight", 1) or 0)
+        if weight < 0 or weight > MAX_WEIGHT:
+            raise SystemExit(f"pattern weight out of firmware range: {pattern['id']}={weight}")
         if len(pattern.get("steps", [])) > MAX_STEP_COUNT:
             raise SystemExit(f"too many steps in pattern: {pattern['id']}")
 
@@ -79,6 +86,8 @@ def main():
         '#include "esp_common.h"',
         '#include "default_patterns.h"',
         "",
+        "#define BUILD_ASSERT(name, cond) typedef char build_assert_##name[(cond) ? 1 : -1]",
+        "",
     ]
 
     for pattern in patterns:
@@ -94,8 +103,13 @@ def main():
             amplitude = amplitude_to_int(step.get("amplitude", 0.0)) if step["type"] == "jitter" else 0
             lines.append(f"    {{ {step_type}, {laser}, {x}, {y}, {duration}, {amplitude} }},")
         lines.append("};")
+        lines.append(f"BUILD_ASSERT({name}_step_count_fits, "
+                     f"(sizeof(steps_{name}) / sizeof(steps_{name}[0])) <= 65535);")
         lines.append("")
 
+    lines.append(f"BUILD_ASSERT(default_pattern_count_fits, {len(patterns)} <= 65535);")
+    lines.append(f"BUILD_ASSERT(default_total_steps_fits, {total_steps} <= {MAX_TOTAL_STEPS});")
+    lines.append("")
     lines.append("static const pattern_t default_patterns[] ICACHE_RODATA_ATTR = {")
     for pattern in patterns:
         name = ident(pattern["id"])

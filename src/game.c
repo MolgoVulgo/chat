@@ -218,6 +218,7 @@ bool game_set_enabled(bool enabled)
         cooldown_until_ms = 0;
         pattern_control_revision++;
         hardware_servo_set_enabled(true);
+        hardware_laser_set(true);
         PATTERN_LOG("session started max_ms=%u revision=%u",
                     (unsigned)GAME_SESSION_MAX_MS,
                     (unsigned)pattern_control_revision);
@@ -286,6 +287,7 @@ uint32_t game_get_session_remaining_ms(void)
     return GAME_SESSION_MAX_MS - elapsed;
 }
 
+#if DEBUG_HARDWARE_ENABLED
 bool game_laser_pulse(uint16_t duration_ms)
 {
     if (duration_ms < LASER_PULSE_MIN_MS) {
@@ -302,6 +304,36 @@ bool game_laser_pulse(uint16_t duration_ms)
     game_state = GAME_STATE_DEBUG;
     PATTERN_LOG("manual laser pulse duration_ms=%u", duration_ms);
     return true;
+}
+#endif
+
+bool game_laser_test_on(void)
+{
+    game_set_enabled(false);
+    hardware_servo_set_enabled(false);
+    hardware_laser_set(true);
+    laser_pulse_until_ms = now_ms() + LASER_TEST_MAX_MS;
+    game_state = GAME_STATE_DEBUG;
+    PATTERN_LOG("manual laser test on max_ms=%u", (unsigned)LASER_TEST_MAX_MS);
+    return true;
+}
+
+bool game_laser_test_on_inverted(void)
+{
+    game_set_enabled(false);
+    hardware_servo_set_enabled(false);
+    hardware_laser_set_raw_level(LASER_ACTIVE_LOW ? true : false);
+    laser_pulse_until_ms = now_ms() + LASER_TEST_MAX_MS;
+    game_state = GAME_STATE_DEBUG;
+    PATTERN_LOG("manual laser inverted test on max_ms=%u", (unsigned)LASER_TEST_MAX_MS);
+    return true;
+}
+
+void game_laser_test_off(void)
+{
+    game_set_enabled(false);
+    hardware_laser_set(false);
+    PATTERN_LOG("manual laser test off");
 }
 
 static int random_range(int min_inclusive, int max_exclusive)
@@ -444,6 +476,11 @@ static bool step_has_position(const pattern_step_t *step)
            step->type == STEP_OFF_MOVE;
 }
 
+static bool step_runtime_laser_on(const pattern_step_t *step)
+{
+    return step->type != STEP_OFF_HOLD && step->type != STEP_OFF_MOVE;
+}
+
 static const pattern_step_t *first_position_step(const pattern_t *pattern)
 {
     for (uint16_t i = 0; i < pattern->step_count; i++) {
@@ -468,7 +505,7 @@ static void prepare_pattern_start(const pattern_t *pattern)
     int16_t to_y = first->y;
     uint16_t duration = (uint16_t)scaled_duration((uint32_t)random_range(PATTERN_TRANSITION_MIN_MS, PATTERN_TRANSITION_MAX_MS + 1));
 
-    hardware_laser_set(false);
+    hardware_laser_set(step_runtime_laser_on(first));
 
     for (uint32_t elapsed = 0; elapsed <= duration; elapsed += MOTION_TICK_MS) {
         if (!toy_enabled) {
@@ -485,6 +522,7 @@ static void prepare_pattern_start(const pattern_t *pattern)
             return;
         }
 
+        hardware_laser_set(step_runtime_laser_on(first));
         int16_t x = interp_coord(from_x, to_x, elapsed, duration);
         int16_t y = interp_coord(from_y, to_y, elapsed, duration);
         set_game_position(x, y);
@@ -500,8 +538,33 @@ static void run_hold_step(const pattern_step_t *step)
         set_game_position(step->x, step->y);
     }
 
-    hardware_laser_set(step->laser);
-    wait_enabled_delay(scaled_duration(step->duration_ms));
+    hardware_laser_set(step_runtime_laser_on(step));
+    uint32_t duration = scaled_duration(step->duration_ms);
+    uint32_t elapsed = 0;
+    while (elapsed < duration) {
+        if (!toy_enabled) {
+            game_set_enabled(false);
+            return;
+        }
+        if (session_has_expired()) {
+            stop_session(true);
+            return;
+        }
+        if (pattern_control_revision != active_run_revision) {
+            PATTERN_LOG("run interrupted during hold active_revision=%u current_revision=%u",
+                        (unsigned)active_run_revision,
+                        (unsigned)pattern_control_revision);
+            return;
+        }
+
+        hardware_laser_set(step_runtime_laser_on(step));
+        uint32_t delay = MOTION_TICK_MS;
+        if (elapsed + delay > duration) {
+            delay = duration - elapsed;
+        }
+        vTaskDelay(ms_to_ticks_min1(delay));
+        elapsed += delay;
+    }
 }
 
 static void run_move_step(const pattern_step_t *step)
@@ -512,7 +575,7 @@ static void run_move_step(const pattern_step_t *step)
     int16_t to_y = step->y;
     uint32_t duration = scaled_duration(step->duration_ms);
 
-    hardware_laser_set(step->laser);
+    hardware_laser_set(step_runtime_laser_on(step));
 
     for (uint32_t elapsed = 0; elapsed <= duration; elapsed += MOTION_TICK_MS) {
         if (!toy_enabled) {
@@ -529,6 +592,7 @@ static void run_move_step(const pattern_step_t *step)
             return;
         }
 
+        hardware_laser_set(step_runtime_laser_on(step));
         int16_t x = interp_coord(from_x, to_x, elapsed, duration);
         int16_t y = interp_coord(from_y, to_y, elapsed, duration);
         set_game_position(x, y);
@@ -546,7 +610,7 @@ static void run_jitter_step(const pattern_step_t *step)
     int16_t center_x = step->x;
     int16_t center_y = step->y;
 
-    hardware_laser_set(step->laser);
+    hardware_laser_set(step_runtime_laser_on(step));
 
     while (elapsed_total < duration) {
         if (!toy_enabled) {
@@ -590,6 +654,7 @@ static void run_jitter_step(const pattern_step_t *step)
                 return;
             }
 
+            hardware_laser_set(step_runtime_laser_on(step));
             int16_t x = interp_coord(from_x, to_x, elapsed, segment);
             int16_t y = interp_coord(from_y, to_y, elapsed, segment);
             set_game_position(x, y);
@@ -667,7 +732,7 @@ void game_movement_task(void *arg)
                 laser_pulse_until_ms != 0 &&
                 !time_before(now_ms(), laser_pulse_until_ms)) {
                 stop_laser_pulse();
-                PATTERN_LOG("manual laser pulse finished");
+                PATTERN_LOG("manual laser debug timeout");
             }
             if (game_state == GAME_STATE_COOLDOWN && !cooldown_is_active()) {
                 cooldown_until_ms = 0;
@@ -716,7 +781,7 @@ void game_movement_task(void *arg)
 
         run_pattern(pattern);
 
-        hardware_laser_set(false);
+        hardware_laser_set(true);
         wait_enabled_delay(scaled_duration((uint32_t)random_range(800, 1800)));
     }
 }

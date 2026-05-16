@@ -491,9 +491,15 @@ L'implémentation firmware actuelle utilise une stratégie hybride :
 - l'upload JSON firmware est désactivé par défaut pour préserver la stabilité du serveur web ;
 - aucun filesystem persistant n'est encore monté côté ESP8266.
 - les sessions sont bornees par `GAME_SESSION_MAX_MS` puis placees en cooldown ;
-- le laser manuel est limite a une impulsion courte ;
+- une session de jeu active force le laser ON par defaut ;
+- seuls les steps `off_hold` et `off_move` coupent explicitement le laser ;
+- le bouton de test laser coupe le jeu et allume le laser jusqu'a `LASER OFF`
+  ou `LASER_TEST_MAX_MS` ;
+- le bouton de test inverse force le niveau GPIO oppose pour diagnostiquer
+  `LASER_ACTIVE_LOW` ;
+- le pulse laser court reste reserve aux builds `DEBUG_HARDWARE_ENABLED=1` ;
 - l'AP de configuration est coupe apres connexion station et le DNS captif
-  ignore les requetes hors mode AP.
+  est arrete hors mode AP.
 
 Conséquence : le flux fiable actuel est édition/validation avec l'outil Python,
 puis régénération du pack C compilé qui reste le fallback sûr au boot.

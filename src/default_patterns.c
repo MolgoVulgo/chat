@@ -4,6 +4,8 @@
 #include "esp_common.h"
 #include "default_patterns.h"
 
+#define BUILD_ASSERT(name, cond) typedef char build_assert_##name[(cond) ? 1 : -1]
+
 static const pattern_step_t steps_slow_floor_mouse[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -380, -340, 3200, 0 },
     { STEP_MOVE, true, -320, -330, 4200, 0 },
@@ -31,6 +33,7 @@ static const pattern_step_t steps_slow_floor_mouse[] ICACHE_RODATA_ATTR = {
     { STEP_JITTER, true, 40, -360, 2600, 8 },
     { STEP_HOLD, true, 40, -360, 4500, 0 },
 };
+BUILD_ASSERT(slow_floor_mouse_step_count_fits, (sizeof(steps_slow_floor_mouse) / sizeof(steps_slow_floor_mouse[0])) <= 65535);
 
 static const pattern_step_t steps_edge_sniffing[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -550, -80, 3400, 0 },
@@ -58,6 +61,7 @@ static const pattern_step_t steps_edge_sniffing[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -510, -100, 4400, 0 },
     { STEP_HOLD, true, -510, -100, 5000, 0 },
 };
+BUILD_ASSERT(edge_sniffing_step_count_fits, (sizeof(steps_edge_sniffing) / sizeof(steps_edge_sniffing[0])) <= 65535);
 
 static const pattern_step_t steps_cautious_triangle_loop[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -220, -300, 3500, 0 },
@@ -87,6 +91,7 @@ static const pattern_step_t steps_cautious_triangle_loop[] ICACHE_RODATA_ATTR = 
     { STEP_MOVE, true, 60, -190, 4200, 0 },
     { STEP_HOLD, true, 60, -190, 4500, 0 },
 };
+BUILD_ASSERT(cautious_triangle_loop_step_count_fits, (sizeof(steps_cautious_triangle_loop) / sizeof(steps_cautious_triangle_loop[0])) <= 65535);
 
 static const pattern_step_t steps_soft_zigzag_insect[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -50, -50, 2600, 0 },
@@ -113,6 +118,7 @@ static const pattern_step_t steps_soft_zigzag_insect[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, 100, -120, 3600, 0 },
     { STEP_HOLD, true, 100, -120, 4200, 0 },
 };
+BUILD_ASSERT(soft_zigzag_insect_step_count_fits, (sizeof(steps_soft_zigzag_insect) / sizeof(steps_soft_zigzag_insect[0])) <= 65535);
 
 static const pattern_step_t steps_hide_under_object[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 280, -320, 3200, 0 },
@@ -140,6 +146,7 @@ static const pattern_step_t steps_hide_under_object[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 260, -280, 4800, 0 },
     { STEP_HOLD, true, 260, -280, 5000, 0 },
 };
+BUILD_ASSERT(hide_under_object_step_count_fits, (sizeof(steps_hide_under_object) / sizeof(steps_hide_under_object[0])) <= 65535);
 
 static const pattern_step_t steps_breathing_spiral[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 33, -10, 2200, 0 },
@@ -204,6 +211,7 @@ static const pattern_step_t steps_breathing_spiral[] ICACHE_RODATA_ATTR = {
     { STEP_JITTER, true, -340, 10, 2400, 8 },
     { STEP_HOLD, true, -340, 10, 3600, 0 },
 };
+BUILD_ASSERT(breathing_spiral_step_count_fits, (sizeof(steps_breathing_spiral) / sizeof(steps_breathing_spiral[0])) <= 65535);
 
 static const pattern_step_t steps_rest_and_tease[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 120, -260, 6500, 0 },
@@ -229,6 +237,7 @@ static const pattern_step_t steps_rest_and_tease[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 60, -240, 7000, 0 },
     { STEP_OFF_HOLD, false, 0, 0, 1600, 0 },
 };
+BUILD_ASSERT(rest_and_tease_step_count_fits, (sizeof(steps_rest_and_tease) / sizeof(steps_rest_and_tease[0])) <= 65535);
 
 static const pattern_step_t steps_slow_escape_then_stop[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -80, 20, 3000, 0 },
@@ -257,6 +266,7 @@ static const pattern_step_t steps_slow_escape_then_stop[] ICACHE_RODATA_ATTR = {
     { STEP_JITTER, true, 40, -20, 2400, 8 },
     { STEP_HOLD, true, 40, -20, 6400, 0 },
 };
+BUILD_ASSERT(slow_escape_then_stop_step_count_fits, (sizeof(steps_slow_escape_then_stop) / sizeof(steps_slow_escape_then_stop[0])) <= 65535);
 
 static const pattern_step_t steps_wide_soft_rectangle[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -360, -280, 3400, 0 },
@@ -287,6 +297,7 @@ static const pattern_step_t steps_wide_soft_rectangle[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, 60, -270, 4600, 0 },
     { STEP_HOLD, true, 60, -270, 5200, 0 },
 };
+BUILD_ASSERT(wide_soft_rectangle_step_count_fits, (sizeof(steps_wide_soft_rectangle) / sizeof(steps_wide_soft_rectangle[0])) <= 65535);
 
 static const pattern_step_t steps_low_capture_zone[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, 180, -120, 5200, 0 },
@@ -311,6 +322,7 @@ static const pattern_step_t steps_low_capture_zone[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, 0, -320, 8000, 0 },
     { STEP_OFF_HOLD, false, 0, 0, 1800, 0 },
 };
+BUILD_ASSERT(low_capture_zone_step_count_fits, (sizeof(steps_low_capture_zone) / sizeof(steps_low_capture_zone[0])) <= 65535);
 
 static const pattern_step_t steps_capture[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, 160, -180, 2800, 0 },
@@ -320,6 +332,7 @@ static const pattern_step_t steps_capture[] ICACHE_RODATA_ATTR = {
     { STEP_JITTER, true, 0, -350, 2600, 10 },
     { STEP_OFF_HOLD, false, 0, 0, 1800, 0 },
 };
+BUILD_ASSERT(capture_step_count_fits, (sizeof(steps_capture) / sizeof(steps_capture[0])) <= 65535);
 
 static const pattern_step_t steps_gentle_hex_walk[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -240, -120, 3200, 0 },
@@ -353,6 +366,7 @@ static const pattern_step_t steps_gentle_hex_walk[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, -120, 40, 4400, 0 },
     { STEP_HOLD, true, -120, 40, 5200, 0 },
 };
+BUILD_ASSERT(gentle_hex_walk_step_count_fits, (sizeof(steps_gentle_hex_walk) / sizeof(steps_gentle_hex_walk[0])) <= 65535);
 
 static const pattern_step_t steps_final_wind_down[] ICACHE_RODATA_ATTR = {
     { STEP_MOVE, true, 200, 20, 5600, 0 },
@@ -376,6 +390,10 @@ static const pattern_step_t steps_final_wind_down[] ICACHE_RODATA_ATTR = {
     { STEP_OFF_MOVE, false, 0, 0, 3000, 0 },
     { STEP_OFF_HOLD, false, 0, 0, 3000, 0 },
 };
+BUILD_ASSERT(final_wind_down_step_count_fits, (sizeof(steps_final_wind_down) / sizeof(steps_final_wind_down[0])) <= 65535);
+
+BUILD_ASSERT(default_pattern_count_fits, 13 <= 65535);
+BUILD_ASSERT(default_total_steps_fits, 334 <= 360);
 
 static const pattern_t default_patterns[] ICACHE_RODATA_ATTR = {
     { "slow_floor_mouse", "Souris au sol lente", 18, (uint16_t)(sizeof(steps_slow_floor_mouse) / sizeof(steps_slow_floor_mouse[0])), steps_slow_floor_mouse },

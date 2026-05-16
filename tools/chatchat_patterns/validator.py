@@ -20,6 +20,8 @@ MAX_PATTERN_NAME_LEN = 47
 MAX_PATTERN_DURATION_MS = 180000
 MAX_STEP_DISTANCE = 0.45
 MAX_RELATIVE_SPEED = 0.18
+HARD_MAX_STEP_DISTANCE = 1.5
+HARD_MAX_RELATIVE_SPEED = 0.6
 MAX_VISIBLE_RUN_MS = 45000
 MIN_LASER_ON_RATIO = 0.35
 MAX_LASER_ON_RATIO = 1.0
@@ -179,8 +181,8 @@ def _validate_steps(steps: list[Any], ppath: str, result: ValidationResult) -> N
             previous_pos = current_pos
 
     if pattern_duration > MAX_PATTERN_DURATION_MS:
-        result.warnings.append(
-            ValidationIssue(ppath, f"duree pattern elevee ({pattern_duration} ms)")
+        result.errors.append(
+            ValidationIssue(ppath, f"duree pattern trop longue ({pattern_duration} ms)")
         )
     if pattern_duration > 0:
         ratio = laser_on_duration / pattern_duration
@@ -270,10 +272,14 @@ def _warn_behavior(
         dx = current_pos[0] - previous_pos[0]
         dy = current_pos[1] - previous_pos[1]
         distance = (dx * dx + dy * dy) ** 0.5
+        if distance > HARD_MAX_STEP_DISTANCE:
+            result.errors.append(ValidationIssue(spath, "distance excessive sur une seule step"))
         if distance > MAX_STEP_DISTANCE:
             result.warnings.append(ValidationIssue(spath, "distance importante sur une seule step"))
         if duration > 0:
             speed = distance / (duration / 1000.0)
+            if speed > HARD_MAX_RELATIVE_SPEED:
+                result.errors.append(ValidationIssue(spath, "vitesse relative excessive"))
             if speed > MAX_RELATIVE_SPEED:
                 result.warnings.append(ValidationIssue(spath, "vitesse relative elevee"))
         if duration < MIN_VISIBLE_DURATION_MS and distance > 0.75:
