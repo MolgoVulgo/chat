@@ -31,7 +31,7 @@ typedef struct {
 
 typedef struct {
     const pattern_t *patterns;
-    uint8_t pattern_count;
+    uint16_t pattern_count;
     uint8_t capture_every;
     const char *source_name;
     const char *json_source;

@@ -139,6 +139,37 @@ def test_behavior_warning_for_fast_visible_move():
     assert any("visible sous 1000 ms" in issue.message for issue in result.warnings)
 
 
+def test_behavior_warning_for_long_fast_step_and_on_ratio():
+    data = json.loads(json.dumps(MINIMAL_PACK))
+    steps = data["patterns"][0]["steps"]
+    steps[:] = [
+        {"type": "hold", "laser": True, "x": 0.0, "y": 0.0, "duration_ms": 3000},
+        {"type": "move", "laser": True, "x": 0.9, "y": 0.9, "duration_ms": 3000},
+        {"type": "hold", "laser": True, "x": 0.9, "y": 0.9, "duration_ms": 50000},
+    ]
+
+    result = validate_pack_data(data)
+
+    assert result.ok
+    assert any("distance importante" in issue.message for issue in result.warnings)
+    assert any("vitesse relative" in issue.message for issue in result.warnings)
+    assert any("sequence laser ON longue" in issue.message for issue in result.warnings)
+
+
+def test_firmware_limits_reject_excessive_ids_and_weight():
+    data = json.loads(json.dumps(MINIMAL_PACK))
+    data["patterns"][0]["id"] = "x" * 40
+    data["patterns"][0]["name"] = "n" * 60
+    data["patterns"][0]["weight"] = 300
+
+    result = validate_pack_data(data)
+
+    assert not result.ok
+    assert any(issue.path.endswith(".id") for issue in result.errors)
+    assert any(issue.path.endswith(".name") for issue in result.errors)
+    assert any(issue.path.endswith(".weight") for issue in result.errors)
+
+
 def test_cli_validate_returns_success_for_valid_file():
     completed = subprocess.run(
         [sys.executable, "-m", "tools.chatchat_patterns", "validate", str(VALID_EXAMPLE)],

@@ -490,6 +490,10 @@ L'implémentation firmware actuelle utilise une stratégie hybride :
 - `/patterns` permet de choisir un pattern, régler la vitesse et télécharger le pack actif ;
 - l'upload JSON firmware est désactivé par défaut pour préserver la stabilité du serveur web ;
 - aucun filesystem persistant n'est encore monté côté ESP8266.
+- les sessions sont bornees par `GAME_SESSION_MAX_MS` puis placees en cooldown ;
+- le laser manuel est limite a une impulsion courte ;
+- l'AP de configuration est coupe apres connexion station et le DNS captif
+  ignore les requetes hors mode AP.
 
 Conséquence : le flux fiable actuel est édition/validation avec l'outil Python,
 puis régénération du pack C compilé qui reste le fallback sûr au boot.

@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 
 static volatile bool toy_enabled = false;
+static volatile game_state_t game_state = GAME_STATE_IDLE;
 static int16_t current_x = START_X;
 static int16_t current_y = START_Y;
 static const pattern_pack_t *active_pack = &default_pattern_pack;
@@ -22,136 +23,69 @@ static volatile int16_t selected_pattern_index = -1;
 static volatile uint16_t speed_percent = PATTERN_SPEED_DEFAULT_PERCENT;
 static volatile uint32_t pattern_control_revision = 0;
 static volatile uint32_t active_run_revision = 0;
+static volatile uint32_t session_started_ms = 0;
+static volatile uint32_t cooldown_until_ms = 0;
+static volatile uint32_t laser_pulse_until_ms = 0;
 
-static const pattern_step_t pattern_mouse_cautious[] = {
-    { STEP_HOLD,     true,  -400, -200,  800,  0 },
-    { STEP_MOVE,     true,  -100, -200, 1800,  0 },
-    { STEP_HOLD,     true,  -100, -200,  900,  0 },
-    { STEP_JITTER,   true,  -100, -200,  900, 30 },
-    { STEP_MOVE,     true,   200, -150, 1600,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  500,  0 },
-    { STEP_OFF_MOVE, false,  350, -100,  400,  0 },
-    { STEP_HOLD,     true,   350, -100, 1200,  0 }
-};
+static uint32_t now_ms(void)
+{
+    return (uint32_t)xTaskGetTickCount() * (uint32_t)portTICK_RATE_MS;
+}
 
-static const pattern_step_t pattern_insect_nervous[] = {
-    { STEP_HOLD,     true,     0,    0,  500,  0 },
-    { STEP_MOVE,     true,   150,   50,  500,  0 },
-    { STEP_MOVE,     true,    50,  150,  450,  0 },
-    { STEP_MOVE,     true,   220,  100,  500,  0 },
-    { STEP_HOLD,     true,   220,  100,  400,  0 },
-    { STEP_MOVE,     true,   100,  -50,  600,  0 },
-    { STEP_JITTER,   true,   100,  -50,  700, 40 },
-    { STEP_OFF_HOLD, false,    0,    0,  300,  0 },
-    { STEP_HOLD,     true,   180,  -80,  900,  0 }
-};
+static bool time_before(uint32_t a, uint32_t b)
+{
+    return (int32_t)(a - b) < 0;
+}
 
-static const pattern_step_t pattern_escape_to_edge[] = {
-    { STEP_HOLD,     true,  -200,    0,  900,  0 },
-    { STEP_JITTER,   true,  -200,    0,  700, 30 },
-    { STEP_MOVE,     true,  -650,   50,  700,  0 },
-    { STEP_HOLD,     true,  -650,   50, 1200,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  600,  0 },
-    { STEP_OFF_MOVE, false, -750,  250,  500,  0 },
-    { STEP_HOLD,     true,  -750,  250, 1000,  0 }
-};
+static bool cooldown_is_active(void)
+{
+    uint32_t now = now_ms();
+    return cooldown_until_ms != 0 && time_before(now, cooldown_until_ms);
+}
 
-static const pattern_step_t pattern_hide_and_seek[] = {
-    { STEP_MOVE,     true,   100, -300, 1200,  0 },
-    { STEP_HOLD,     true,   100, -300,  600,  0 },
-    { STEP_MOVE,     true,   350, -300,  800,  0 },
-    { STEP_OFF_HOLD, false,    0,    0, 1000,  0 },
-    { STEP_OFF_MOVE, false,  450, -200,  500,  0 },
-    { STEP_HOLD,     true,   450, -200,  600,  0 },
-    { STEP_MOVE,     true,   300, -100,  900,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  500,  0 }
-};
+static void stop_laser_pulse(void)
+{
+    laser_pulse_until_ms = 0;
+    if (game_state == GAME_STATE_DEBUG) {
+        hardware_laser_set(false);
+        game_state = cooldown_is_active() ? GAME_STATE_COOLDOWN : GAME_STATE_IDLE;
+    }
+}
 
-static const pattern_step_t pattern_rectangle_patrol[] = {
-    { STEP_HOLD,     true,  -500, -400,  800,  0 },
-    { STEP_MOVE,     true,   200, -400, 2200,  0 },
-    { STEP_HOLD,     true,   200, -400, 1000,  0 },
-    { STEP_MOVE,     true,   250, -150, 1200,  0 },
-    { STEP_HOLD,     true,   250, -150,  700,  0 },
-    { STEP_MOVE,     true,  -400, -150, 2000,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  400,  0 },
-    { STEP_OFF_MOVE, false, -500, -400,  600,  0 },
-    { STEP_HOLD,     true,  -500, -400, 1200,  0 }
-};
+static void stop_session(bool start_cooldown)
+{
+    toy_enabled = false;
+    pattern_control_revision++;
+    hardware_laser_set(false);
+    hardware_reset_position();
+    hardware_servo_set_enabled(true);
+    vTaskDelay(ms_to_ticks_min1(SERVO_REST_SETTLE_MS));
+    hardware_servo_set_enabled(false);
+    current_x = START_X;
+    current_y = START_Y;
+    session_started_ms = 0;
 
-static const pattern_step_t pattern_triangle_ambush[] = {
-    { STEP_HOLD,     true,     0, -350,  900,  0 },
-    { STEP_MOVE,     true,   350,   50, 1600,  0 },
-    { STEP_HOLD,     true,   350,   50, 1000,  0 },
-    { STEP_JITTER,   true,   350,   50,  600, 20 },
-    { STEP_MOVE,     true,  -250,  150, 1800,  0 },
-    { STEP_HOLD,     true,  -250,  150,  800,  0 },
-    { STEP_OFF_MOVE, false,    0, -350,  700,  0 },
-    { STEP_HOLD,     true,     0, -350, 1200,  0 }
-};
+    if (start_cooldown) {
+        cooldown_until_ms = now_ms() + GAME_COOLDOWN_MS;
+        game_state = GAME_STATE_COOLDOWN;
+        PATTERN_LOG("session stopped cooldown_ms=%u revision=%u",
+                    (unsigned)GAME_COOLDOWN_MS,
+                    (unsigned)pattern_control_revision);
+    } else {
+        cooldown_until_ms = 0;
+        game_state = GAME_STATE_IDLE;
+        PATTERN_LOG("session stopped manual revision=%u",
+                    (unsigned)pattern_control_revision);
+    }
+}
 
-static const pattern_step_t pattern_broken_ellipse[] = {
-    { STEP_HOLD,     true,     0,    0,  700,  0 },
-    { STEP_MOVE,     true,   250,   50, 1000,  0 },
-    { STEP_MOVE,     true,   350,  200, 1000,  0 },
-    { STEP_MOVE,     true,   150,  350, 1000,  0 },
-    { STEP_HOLD,     true,   150,  350,  900,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  400,  0 },
-    { STEP_OFF_MOVE, false, -100,  250,  500,  0 },
-    { STEP_MOVE,     true,  -300,   50, 1200,  0 },
-    { STEP_HOLD,     true,  -300,   50,  900,  0 }
-};
-
-static const pattern_step_t pattern_radial_star_escape[] = {
-    { STEP_HOLD,     true,     0,    0,  900,  0 },
-    { STEP_MOVE,     true,   350,    0,  600,  0 },
-    { STEP_OFF_MOVE, false,    0,    0,  300,  0 },
-    { STEP_MOVE,     true,  -250,  200,  650,  0 },
-    { STEP_OFF_MOVE, false,    0,    0,  300,  0 },
-    { STEP_MOVE,     true,   100, -350,  700,  0 },
-    { STEP_OFF_MOVE, false,    0,    0,  300,  0 },
-    { STEP_HOLD,     true,     0,    0, 1000,  0 }
-};
-
-static const pattern_step_t pattern_broken_hexagon[] = {
-    { STEP_HOLD,     true,  -300, -200,  800,  0 },
-    { STEP_MOVE,     true,     0, -300, 1300,  0 },
-    { STEP_MOVE,     true,   300, -150, 1300,  0 },
-    { STEP_HOLD,     true,   300, -150,  900,  0 },
-    { STEP_MOVE,     true,   250,  200, 1300,  0 },
-    { STEP_OFF_HOLD, false,    0,    0,  500,  0 },
-    { STEP_OFF_MOVE, false, -150,  250,  500,  0 },
-    { STEP_HOLD,     true,  -150,  250,  900,  0 },
-    { STEP_MOVE,     true,  -350,    0, 1400,  0 }
-};
-
-static const pattern_step_t pattern_capture[] = {
-    { STEP_MOVE,     true,   100, -100, 1200,  0 },
-    { STEP_MOVE,     true,     0, -350, 1600,  0 },
-    { STEP_HOLD,     true,     0, -350, 2500,  0 },
-    { STEP_JITTER,   true,     0, -350, 1200, 15 },
-    { STEP_OFF_HOLD, false,    0,    0, 2000,  0 }
-};
-
-static const pattern_t weighted_patterns[] = {
-    { "mouse_cautious",       "Souris prudente",                  35, ARRAY_SIZE(pattern_mouse_cautious),      pattern_mouse_cautious },
-    { "escape_to_edge",       "Fuite vers un bord",               20, ARRAY_SIZE(pattern_escape_to_edge),      pattern_escape_to_edge },
-    { "hide_and_seek",        "Cache-cache derrière objet",       15, ARRAY_SIZE(pattern_hide_and_seek),       pattern_hide_and_seek },
-    { "insect_nervous",       "Insecte nerveux",                  10, ARRAY_SIZE(pattern_insect_nervous),      pattern_insect_nervous },
-    { "rectangle_patrol",     "Rectangle patrouille",              7, ARRAY_SIZE(pattern_rectangle_patrol),    pattern_rectangle_patrol },
-    { "triangle_ambush",      "Triangle d'embuscade",              7, ARRAY_SIZE(pattern_triangle_ambush),     pattern_triangle_ambush },
-    { "broken_ellipse",       "Ellipse cassée",                    5, ARRAY_SIZE(pattern_broken_ellipse),      pattern_broken_ellipse },
-    { "radial_star_escape",   "Étoile radiale",                    3, ARRAY_SIZE(pattern_radial_star_escape),  pattern_radial_star_escape },
-    { "broken_hexagon",       "Hexagone lent cassé",               2, ARRAY_SIZE(pattern_broken_hexagon),      pattern_broken_hexagon }
-};
-
-static const pattern_t capture_pattern = {
-    "capture",
-    "Capture",
-    0,
-    ARRAY_SIZE(pattern_capture),
-    pattern_capture
-};
+static bool session_has_expired(void)
+{
+    if (!toy_enabled || session_started_ms == 0) {
+        return false;
+    }
+    return now_ms() - session_started_ms >= GAME_SESSION_MAX_MS;
+}
 
 void game_use_default_patterns(void)
 {
@@ -267,23 +201,107 @@ uint16_t game_get_speed_percent(void)
     return speed_percent;
 }
 
-void game_set_enabled(bool enabled)
+bool game_set_enabled(bool enabled)
 {
-    toy_enabled = enabled;
     if (enabled) {
+        if (cooldown_is_active()) {
+            game_state = GAME_STATE_COOLDOWN;
+            PATTERN_LOG("session start rejected cooldown_remaining_ms=%u",
+                        (unsigned)game_get_cooldown_remaining_ms());
+            return false;
+        }
+
+        stop_laser_pulse();
+        toy_enabled = true;
+        game_state = GAME_STATE_RUNNING;
+        session_started_ms = now_ms();
+        cooldown_until_ms = 0;
+        pattern_control_revision++;
         hardware_servo_set_enabled(true);
+        PATTERN_LOG("session started max_ms=%u revision=%u",
+                    (unsigned)GAME_SESSION_MAX_MS,
+                    (unsigned)pattern_control_revision);
     } else {
-        hardware_laser_set(false);
-        hardware_reset_position();
-        hardware_servo_set_enabled(false);
-        current_x = START_X;
-        current_y = START_Y;
+        stop_laser_pulse();
+        if (toy_enabled || game_state != GAME_STATE_IDLE) {
+            stop_session(false);
+        } else {
+            hardware_laser_set(false);
+            hardware_reset_position();
+            hardware_servo_set_enabled(false);
+        }
     }
+
+    return true;
 }
 
 bool game_is_enabled(void)
 {
     return toy_enabled;
+}
+
+game_state_t game_get_state(void)
+{
+    if (game_state == GAME_STATE_COOLDOWN && !cooldown_is_active()) {
+        game_state = GAME_STATE_IDLE;
+        cooldown_until_ms = 0;
+    }
+    return game_state;
+}
+
+const char *game_get_state_text(void)
+{
+    switch (game_get_state()) {
+    case GAME_STATE_RUNNING:
+        return "running";
+    case GAME_STATE_COOLDOWN:
+        return "cooldown";
+    case GAME_STATE_DEBUG:
+        return "debug";
+    case GAME_STATE_IDLE:
+    default:
+        return "idle";
+    }
+}
+
+uint32_t game_get_cooldown_remaining_ms(void)
+{
+    uint32_t now = now_ms();
+    if (cooldown_until_ms == 0 || !time_before(now, cooldown_until_ms)) {
+        return 0;
+    }
+    return cooldown_until_ms - now;
+}
+
+uint32_t game_get_session_remaining_ms(void)
+{
+    if (!toy_enabled || session_started_ms == 0) {
+        return 0;
+    }
+
+    uint32_t elapsed = now_ms() - session_started_ms;
+    if (elapsed >= GAME_SESSION_MAX_MS) {
+        return 0;
+    }
+    return GAME_SESSION_MAX_MS - elapsed;
+}
+
+bool game_laser_pulse(uint16_t duration_ms)
+{
+    if (duration_ms < LASER_PULSE_MIN_MS) {
+        duration_ms = LASER_PULSE_MIN_MS;
+    }
+    if (duration_ms > LASER_PULSE_MAX_MS) {
+        duration_ms = LASER_PULSE_MAX_MS;
+    }
+
+    game_set_enabled(false);
+    hardware_servo_set_enabled(false);
+    hardware_laser_set(true);
+    laser_pulse_until_ms = now_ms() + duration_ms;
+    game_state = GAME_STATE_DEBUG;
+    PATTERN_LOG("manual laser pulse duration_ms=%u", duration_ms);
+    return true;
 }
 
 static int random_range(int min_inclusive, int max_exclusive)
@@ -302,6 +320,10 @@ static bool wait_enabled_delay(uint32_t duration_ms)
     while (elapsed < duration_ms) {
         if (!toy_enabled) {
             game_set_enabled(false);
+            return false;
+        }
+        if (session_has_expired()) {
+            stop_session(true);
             return false;
         }
         if (pattern_control_revision != active_run_revision) {
@@ -376,7 +398,7 @@ static const pattern_t *choose_weighted_pattern(void)
     uint16_t total = 0;
     const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
 
-    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+    for (uint16_t i = 0; i < pack->pattern_count; i++) {
         total += pack->patterns[i].weight;
     }
 
@@ -386,7 +408,7 @@ static const pattern_t *choose_weighted_pattern(void)
 
     uint16_t draw = (uint16_t)random_range(0, total);
 
-    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+    for (uint16_t i = 0; i < pack->pattern_count; i++) {
         if (draw < pack->patterns[i].weight) {
             return &pack->patterns[i];
         }
@@ -398,18 +420,19 @@ static const pattern_t *choose_weighted_pattern(void)
 
 static const pattern_t *find_capture_pattern(const pattern_pack_t *pack)
 {
-    if (pack == NULL || pack == &default_pattern_pack) {
-        return &capture_pattern;
+    if (pack == NULL) {
+        return NULL;
     }
 
-    for (uint8_t i = 0; i < pack->pattern_count; i++) {
-        if (strcmp(pack->patterns[i].id, "capture") == 0 ||
-            strcmp(pack->patterns[i].id, "final_wind_down") == 0 ||
-            strcmp(pack->patterns[i].id, "low_capture_zone") == 0) {
+    for (uint16_t i = 0; i < pack->pattern_count; i++) {
+        if (strcmp(pack->patterns[i].id, "capture") == 0) {
             return &pack->patterns[i];
         }
     }
 
+    if (pack->pattern_count > 0) {
+        return &pack->patterns[pack->pattern_count - 1];
+    }
     return NULL;
 }
 
@@ -449,6 +472,10 @@ static void prepare_pattern_start(const pattern_t *pattern)
 
     for (uint32_t elapsed = 0; elapsed <= duration; elapsed += MOTION_TICK_MS) {
         if (!toy_enabled) {
+            return;
+        }
+        if (session_has_expired()) {
+            stop_session(true);
             return;
         }
         if (pattern_control_revision != active_run_revision) {
@@ -491,6 +518,10 @@ static void run_move_step(const pattern_step_t *step)
         if (!toy_enabled) {
             return;
         }
+        if (session_has_expired()) {
+            stop_session(true);
+            return;
+        }
         if (pattern_control_revision != active_run_revision) {
             PATTERN_LOG("run interrupted during move active_revision=%u current_revision=%u",
                         (unsigned)active_run_revision,
@@ -521,6 +552,10 @@ static void run_jitter_step(const pattern_step_t *step)
         if (!toy_enabled) {
             return;
         }
+        if (session_has_expired()) {
+            stop_session(true);
+            return;
+        }
         if (pattern_control_revision != active_run_revision) {
             PATTERN_LOG("run interrupted during jitter active_revision=%u current_revision=%u",
                         (unsigned)active_run_revision,
@@ -542,6 +577,10 @@ static void run_jitter_step(const pattern_step_t *step)
 
         for (uint32_t elapsed = 0; elapsed <= segment; elapsed += MOTION_TICK_MS) {
             if (!toy_enabled) {
+                return;
+            }
+            if (session_has_expired()) {
+                stop_session(true);
                 return;
             }
             if (pattern_control_revision != active_run_revision) {
@@ -624,7 +663,22 @@ void game_movement_task(void *arg)
 
     while (true) {
         if (!toy_enabled) {
+            if (game_state == GAME_STATE_DEBUG &&
+                laser_pulse_until_ms != 0 &&
+                !time_before(now_ms(), laser_pulse_until_ms)) {
+                stop_laser_pulse();
+                PATTERN_LOG("manual laser pulse finished");
+            }
+            if (game_state == GAME_STATE_COOLDOWN && !cooldown_is_active()) {
+                cooldown_until_ms = 0;
+                game_state = GAME_STATE_IDLE;
+                PATTERN_LOG("cooldown finished");
+            }
             vTaskDelay(ms_to_ticks_min1(200));
+            continue;
+        }
+        if (session_has_expired()) {
+            stop_session(true);
             continue;
         }
 

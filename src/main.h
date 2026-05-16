@@ -67,6 +67,13 @@
 #define PATTERN_SPEED_MAX_PERCENT       300
 #define PATTERN_SPEED_DEFAULT_PERCENT   100
 
+#define GAME_SESSION_MAX_MS             (10 * 60 * 1000)
+#define GAME_COOLDOWN_MS                (5 * 60 * 1000)
+#define SERVO_REST_SETTLE_MS            500
+#define LASER_PULSE_MIN_MS              100
+#define LASER_PULSE_DEFAULT_MS          1000
+#define LASER_PULSE_MAX_MS              3000
+
 // Coordonnées normalisées internes : -1000 à +1000.
 // x = -1000 gauche, +1000 droite.
 // y = -1000 bas,    +1000 haut.
@@ -96,6 +103,7 @@
 #define CONFIG_AP_IP_C          4
 #define CONFIG_AP_IP_D          1
 #define WIFI_SCAN_MAX_RESULTS   24
+#define HTTP_SOCKET_TIMEOUT_MS  3000
 
 // -----------------------------------------------------------------------------
 // OTA

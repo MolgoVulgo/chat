@@ -13,6 +13,16 @@ MIN_VISIBLE_DURATION_MS = 1000
 MIN_JITTER_DURATION_MS = 1000
 MAX_INVISIBLE_HOLD_MS = 10000
 MAX_COORD = 1.0
+MAX_PATTERN_COUNT = 16
+MAX_TOTAL_STEPS = 360
+MAX_PATTERN_ID_LEN = 31
+MAX_PATTERN_NAME_LEN = 47
+MAX_PATTERN_DURATION_MS = 180000
+MAX_STEP_DISTANCE = 0.45
+MAX_RELATIVE_SPEED = 0.18
+MAX_VISIBLE_RUN_MS = 45000
+MIN_LASER_ON_RATIO = 0.35
+MAX_LASER_ON_RATIO = 1.0
 
 
 @dataclass(frozen=True)
@@ -69,6 +79,10 @@ def validate_pack_data(data: Any) -> ValidationResult:
         return result
 
     result.pattern_count = len(patterns)
+    if len(patterns) > MAX_PATTERN_COUNT:
+        result.errors.append(
+            ValidationIssue("patterns", f"maximum firmware {MAX_PATTERN_COUNT} patterns")
+        )
     seen_ids: set[str] = set()
 
     for pattern_index, pattern in enumerate(patterns):
@@ -84,6 +98,20 @@ def validate_pack_data(data: Any) -> ValidationResult:
             result.errors.append(ValidationIssue(f"{ppath}.id", "id duplique"))
         else:
             seen_ids.add(pattern_id)
+            if len(pattern_id) > MAX_PATTERN_ID_LEN:
+                result.errors.append(
+                    ValidationIssue(f"{ppath}.id", f"id trop long pour le firmware ({MAX_PATTERN_ID_LEN} max)")
+                )
+
+        name = pattern.get("name")
+        if isinstance(name, str) and len(name) > MAX_PATTERN_NAME_LEN:
+            result.errors.append(
+                ValidationIssue(f"{ppath}.name", f"nom trop long pour le firmware ({MAX_PATTERN_NAME_LEN} max)")
+            )
+
+        weight = pattern.get("weight", 1)
+        if not isinstance(weight, int) or weight < 0 or weight > 255:
+            result.errors.append(ValidationIssue(f"{ppath}.weight", "poids attendu dans 0..255"))
 
         steps = pattern.get("steps")
         if not isinstance(steps, list) or not steps:
@@ -91,6 +119,10 @@ def validate_pack_data(data: Any) -> ValidationResult:
             continue
 
         result.step_count += len(steps)
+        if result.step_count > MAX_TOTAL_STEPS:
+            result.errors.append(
+                ValidationIssue("patterns", f"maximum firmware {MAX_TOTAL_STEPS} steps au total")
+            )
         _validate_steps(steps, ppath, result)
 
     return result
@@ -98,6 +130,10 @@ def validate_pack_data(data: Any) -> ValidationResult:
 
 def _validate_steps(steps: list[Any], ppath: str, result: ValidationResult) -> None:
     previous_pos: tuple[float, float] | None = None
+    pattern_duration = 0
+    laser_on_duration = 0
+    visible_run_duration = 0
+    visible_run_warned = False
 
     for step_index, step in enumerate(steps):
         spath = f"{ppath}.steps[{step_index}]"
@@ -111,6 +147,14 @@ def _validate_steps(steps: list[Any], ppath: str, result: ValidationResult) -> N
             continue
 
         duration = _validate_duration(step, spath, result)
+        if duration is not None:
+            pattern_duration += duration
+            laser = bool(step.get("laser", step_type not in {"off_hold", "off_move"}))
+            if step_type not in {"off_hold", "off_move"} and laser:
+                laser_on_duration += duration
+                visible_run_duration += duration
+            else:
+                visible_run_duration = 0
         has_position = step_type in POSITION_STEP_TYPES
         current_pos: tuple[float, float] | None = None
 
@@ -121,9 +165,29 @@ def _validate_steps(steps: list[Any], ppath: str, result: ValidationResult) -> N
             _validate_jitter(step, spath, duration, result)
 
         _warn_behavior(step_type, spath, duration, previous_pos, current_pos, result)
+        if (
+            duration is not None
+            and visible_run_duration > MAX_VISIBLE_RUN_MS
+            and not visible_run_warned
+        ):
+            result.warnings.append(
+                ValidationIssue(spath, "sequence laser ON longue sans pause invisible")
+            )
+            visible_run_warned = True
 
         if current_pos is not None:
             previous_pos = current_pos
+
+    if pattern_duration > MAX_PATTERN_DURATION_MS:
+        result.warnings.append(
+            ValidationIssue(ppath, f"duree pattern elevee ({pattern_duration} ms)")
+        )
+    if pattern_duration > 0:
+        ratio = laser_on_duration / pattern_duration
+        if ratio < MIN_LASER_ON_RATIO:
+            result.warnings.append(ValidationIssue(ppath, "ratio laser ON faible"))
+        elif ratio > MAX_LASER_ON_RATIO:
+            result.warnings.append(ValidationIssue(ppath, "ratio laser ON tres eleve"))
 
 
 def _validate_duration(step: dict[str, Any], spath: str, result: ValidationResult) -> int | None:
@@ -202,12 +266,17 @@ def _warn_behavior(
         step_type in {"move", "off_move"}
         and previous_pos is not None
         and current_pos is not None
-        and duration < MIN_VISIBLE_DURATION_MS
     ):
         dx = current_pos[0] - previous_pos[0]
         dy = current_pos[1] - previous_pos[1]
         distance = (dx * dx + dy * dy) ** 0.5
-        if distance > 0.75:
+        if distance > MAX_STEP_DISTANCE:
+            result.warnings.append(ValidationIssue(spath, "distance importante sur une seule step"))
+        if duration > 0:
+            speed = distance / (duration / 1000.0)
+            if speed > MAX_RELATIVE_SPEED:
+                result.warnings.append(ValidationIssue(spath, "vitesse relative elevee"))
+        if duration < MIN_VISIBLE_DURATION_MS and distance > 0.75:
             result.warnings.append(
                 ValidationIssue(spath, "saut de coordonnees important pour une duree courte")
             )

@@ -312,6 +312,15 @@ static const pattern_step_t steps_low_capture_zone[] ICACHE_RODATA_ATTR = {
     { STEP_OFF_HOLD, false, 0, 0, 1800, 0 },
 };
 
+static const pattern_step_t steps_capture[] ICACHE_RODATA_ATTR = {
+    { STEP_MOVE, true, 160, -180, 2800, 0 },
+    { STEP_MOVE, true, 60, -280, 3000, 0 },
+    { STEP_MOVE, true, 0, -350, 3200, 0 },
+    { STEP_HOLD, true, 0, -350, 6000, 0 },
+    { STEP_JITTER, true, 0, -350, 2600, 10 },
+    { STEP_OFF_HOLD, false, 0, 0, 1800, 0 },
+};
+
 static const pattern_step_t steps_gentle_hex_walk[] ICACHE_RODATA_ATTR = {
     { STEP_HOLD, true, -240, -120, 3200, 0 },
     { STEP_MOVE, true, -160, -200, 4600, 0 },
@@ -379,13 +388,14 @@ static const pattern_t default_patterns[] ICACHE_RODATA_ATTR = {
     { "slow_escape_then_stop", "Fuite courte puis arrêt", 9, (uint16_t)(sizeof(steps_slow_escape_then_stop) / sizeof(steps_slow_escape_then_stop[0])), steps_slow_escape_then_stop },
     { "wide_soft_rectangle", "Rectangle souple large", 7, (uint16_t)(sizeof(steps_wide_soft_rectangle) / sizeof(steps_wide_soft_rectangle[0])), steps_wide_soft_rectangle },
     { "low_capture_zone", "Zone basse capturable", 10, (uint16_t)(sizeof(steps_low_capture_zone) / sizeof(steps_low_capture_zone[0])), steps_low_capture_zone },
+    { "capture", "Capture", 0, (uint16_t)(sizeof(steps_capture) / sizeof(steps_capture[0])), steps_capture },
     { "gentle_hex_walk", "Hexagone doux", 5, (uint16_t)(sizeof(steps_gentle_hex_walk) / sizeof(steps_gentle_hex_walk[0])), steps_gentle_hex_walk },
     { "final_wind_down", "Retour au calme", 6, (uint16_t)(sizeof(steps_final_wind_down) / sizeof(steps_final_wind_down[0])), steps_final_wind_down },
 };
 
 const pattern_pack_t default_pattern_pack ICACHE_RODATA_ATTR = {
     default_patterns,
-    (uint8_t)(sizeof(default_patterns) / sizeof(default_patterns[0])),
+    (uint16_t)(sizeof(default_patterns) / sizeof(default_patterns[0])),
     4,
     "compiled default_patterns.json",
     NULL,

@@ -30,6 +30,7 @@ static wifi_scan_result_t wifi_scan_results[WIFI_SCAN_MAX_RESULTS];
 static volatile uint8_t wifi_scan_count = 0;
 static volatile bool wifi_scan_running = false;
 static volatile bool wifi_scan_requested = false;
+static volatile bool config_ap_active = true;
 static char wifi_status_message[96] = "Aucun reseau configure.";
 static char http_body[4096];
 static struct scan_config wifi_scan_config;
@@ -53,6 +54,7 @@ static void wifi_enable_config_ap(const char *reason)
 {
     wifi_set_opmode_current(STATIONAP_MODE);
     wifi_softap_dhcps_start();
+    config_ap_active = true;
     WEB_LOG("config ap enabled reason=%s", reason);
 }
 
@@ -63,6 +65,7 @@ static void wifi_disable_config_ap(const char *reason)
     wifi_get_ip_info(STATION_IF, &station_ip);
     wifi_softap_dhcps_stop();
     wifi_set_opmode_current(STATION_MODE);
+    config_ap_active = false;
     WEB_LOG("config ap disabled reason=%s station_ip=%s", reason, ipaddr_ntoa(&station_ip.ip));
 }
 
@@ -444,7 +447,7 @@ static void append_pattern_options(char *body, size_t body_len, size_t *used, co
         return;
     }
 
-    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+    for (uint16_t i = 0; i < pack->pattern_count; i++) {
         appendf(body, body_len, used, "<option value='%d'%s>",
                 i, selected == (int16_t)i ? " selected" : "");
         append_escaped(body, body_len, used, pack->patterns[i].id);
@@ -466,12 +469,16 @@ static void http_send_home(int client)
     appendf(http_body, sizeof(http_body), &used,
             "<p>Jouet: <strong>%s</strong></p>"
             "<p>Laser: <strong>%s</strong></p>"
+            "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
             "<p>WiFi: <strong>%s</strong></p>"
             "<p>IP: <strong>%s</strong></p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>",
+            "<p><a href='/laser/pulse?ms=1000'>Pulse laser</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a><a href='/ota'>OTA</a></p>",
             game_is_enabled() ? "ON" : "OFF",
             hardware_laser_is_on() ? "ON" : "OFF",
+            game_get_state_text(),
+            (unsigned)(game_get_session_remaining_ms() / 1000u),
+            (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
             station_status_text(),
             ipaddr_ntoa(&station_ip.ip));
     append_page_end(http_body, sizeof(http_body), &used);
@@ -506,8 +513,9 @@ static void http_send_wifi(int client)
             "<p class='muted'>Portail ESP OK.</p>"
             "<p>Jouet: <strong>%s</strong></p>"
             "<p>Laser: <strong>%s</strong></p>"
+            "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
             "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-            "<p><a href='/laser/on'>LASER ON</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>"
+            "<p><a href='/laser/pulse?ms=1000'>Pulse laser</a><a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>"
             "<p>Station: %s</p>"
             "<p>Scan: %s</p>"
             "<p><a href='/scan'>Scanner les reseaux</a></p>"
@@ -517,6 +525,9 @@ static void http_send_wifi(int client)
             (wifi_scan_running || wifi_scan_requested) ? "<meta http-equiv='refresh' content='2;url=/wifi'>" : "",
             game_is_enabled() ? "ON" : "OFF",
             hardware_laser_is_on() ? "ON" : "OFF",
+            game_get_state_text(),
+            (unsigned)(game_get_session_remaining_ms() / 1000u),
+            (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
             station_status_text(),
             scan_status_text());
 
@@ -579,7 +590,7 @@ static void http_send_patterns(int client)
     uint16_t step_count = 0;
 
     if (pack != NULL) {
-        for (uint8_t i = 0; i < pack->pattern_count; i++) {
+        for (uint16_t i = 0; i < pack->pattern_count; i++) {
             step_count += pack->patterns[i].step_count;
         }
     }
@@ -595,8 +606,12 @@ static void http_send_patterns(int client)
                    pack == NULL || pack->source_name == NULL ? "aucune" : pack->source_name);
     appendf(http_body, sizeof(http_body), &used,
             "</strong></p>"
+            "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
             "<p>Patterns: %u / Steps: %u / Capture every: %u</p>"
             "<p>Selection: <strong>",
+            game_get_state_text(),
+            (unsigned)(game_get_session_remaining_ms() / 1000u),
+            (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
             pack == NULL ? 0 : pack->pattern_count,
             step_count,
             pack == NULL ? 0 : pack->capture_every);
@@ -727,7 +742,7 @@ static void http_send_patterns_download(int client)
              PATTERN_SCHEMA, pack->capture_every);
     http_send(client, chunk);
 
-    for (uint8_t i = 0; i < pack->pattern_count; i++) {
+    for (uint16_t i = 0; i < pack->pattern_count; i++) {
         const pattern_t *pattern = &pack->patterns[i];
         snprintf(chunk, sizeof(chunk),
                  "%s{\"id\":",
@@ -931,6 +946,26 @@ static void http_handle_patterns_speed_request(int client, const char *query)
     }
 
     http_redirect(client, "/patterns");
+}
+
+static void http_handle_laser_pulse_request(int client, const char *query)
+{
+    char value[16];
+    uint16_t duration_ms = LASER_PULSE_DEFAULT_MS;
+
+    query_value(query, "ms", value, sizeof(value));
+    if (value[0] != '\0') {
+        int parsed = atoi(value);
+        if (parsed > 0) {
+            duration_ms = (uint16_t)parsed;
+        }
+    }
+
+    game_laser_pulse(duration_ms);
+    WEB_LOG("laser pulse requested ms=%u state=%s",
+            duration_ms,
+            game_get_state_text());
+    http_redirect(client, "/");
 }
 
 static const char *http_find_header_value(const char *request, const char *name)
@@ -1164,23 +1199,32 @@ static void http_handle_request(int client, char *request, int request_len)
         if (http_reject_when_ota_running(client)) {
             return;
         }
-        game_set_enabled(true);
-        WEB_LOG("toy enabled from web");
+        if (game_set_enabled(true)) {
+            WEB_LOG("toy enabled from web state=%s", game_get_state_text());
+        } else {
+            WEB_LOG("toy start rejected state=%s cooldown_remaining_ms=%u",
+                    game_get_state_text(),
+                    (unsigned)game_get_cooldown_remaining_ms());
+        }
         http_redirect(client, "/");
     } else if (strcmp(path, "/off") == 0) {
         if (http_reject_when_ota_running(client)) {
             return;
         }
         game_set_enabled(false);
-        WEB_LOG("toy disabled from web");
+        WEB_LOG("toy disabled from web state=%s", game_get_state_text());
         http_redirect(client, "/");
+    } else if (strncmp(path, "/laser/pulse?", 13) == 0) {
+        if (http_reject_when_ota_running(client)) {
+            return;
+        }
+        http_handle_laser_pulse_request(client, path + 13);
     } else if (strcmp(path, "/laser/on") == 0) {
         if (http_reject_when_ota_running(client)) {
             return;
         }
-        game_set_enabled(false);
-        hardware_laser_set(true);
-        WEB_LOG("laser enabled from web");
+        game_laser_pulse(LASER_PULSE_DEFAULT_MS);
+        WEB_LOG("legacy laser on mapped to pulse state=%s", game_get_state_text());
         http_redirect(client, "/");
     } else if (strcmp(path, "/laser/off") == 0) {
         if (http_reject_when_ota_running(client)) {
@@ -1262,6 +1306,16 @@ static void http_close_client(int client)
     WEB_DEBUG_LOG("http client closed");
 }
 
+static void http_set_client_timeouts(int client)
+{
+    struct timeval timeout;
+    timeout.tv_sec = HTTP_SOCKET_TIMEOUT_MS / 1000;
+    timeout.tv_usec = (HTTP_SOCKET_TIMEOUT_MS % 1000) * 1000;
+
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+
 static int dns_question_end(const uint8_t *packet, int len)
 {
     int pos = 12;
@@ -1310,6 +1364,9 @@ void web_dns_server_task(void *arg)
         int len = recvfrom(server, packet, sizeof(packet), 0,
                            (struct sockaddr *)&client_addr, &client_len);
 
+        if (!config_ap_active) {
+            continue;
+        }
         if (len < 12) {
             continue;
         }
@@ -1385,6 +1442,7 @@ void web_http_server_task(void *arg)
             vTaskDelay(ms_to_ticks_min1(50));
             continue;
         }
+        http_set_client_timeouts(client);
 
         char request[1024];
         int n = recv(client, request, sizeof(request) - 1, 0);
@@ -1439,6 +1497,7 @@ void web_portal_init(void)
 {
     WEB_LOG("wifi init station+ap");
     wifi_set_opmode_current(STATIONAP_MODE);
+    config_ap_active = true;
     wifi_station_set_auto_connect(true);
     wifi_station_set_reconnect_policy(true);
     wifi_softap_dhcps_stop();

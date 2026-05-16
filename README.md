@@ -102,15 +102,21 @@ La position de démarrage est :
 - `PATTERN_CAPTURE_EVERY` force le pattern `capture` toutes les N scènes.
 - `JITTER_POINT_INTERVAL_MS` règle la nervosité des petits mouvements aléatoires.
 
-## Laser
+## Sessions et laser
 
 Le laser est uniquement ON/OFF. Il n'y a pas de PWM laser.
+Le jeu est lance sous forme de session bornee :
+
+- `GAME_SESSION_MAX_MS` limite la duree d'une session ;
+- `GAME_COOLDOWN_MS` bloque une relance immediate apres une fin automatique ;
+- l'arret manuel coupe immediatement le jeu et le laser ;
+- le laser manuel est une impulsion bornee, pas un etat ON permanent.
 
 Le pilotage est fait par :
 
 ```c
-laser_set(true);
-laser_set(false);
+hardware_laser_set(true);
+hardware_laser_set(false);
 ```
 
 Cette fonction met à jour l'état interne et applique directement le niveau GPIO.
@@ -161,10 +167,12 @@ URL: http://192.168.4.1/
 
 Un mini DNS captif ecoute aussi sur le port 53 et renvoie `192.168.4.1` pour les requetes DNS. Sur la plupart des telephones et ordinateurs, la page de configuration s'ouvre donc automatiquement apres connexion au WiFi `LaserCatToy`.
 
-Le firmware reste en mode `STATIONAP_MODE` :
+Le firmware demarre en `STATIONAP_MODE`, puis bascule en `STATION_MODE` quand
+la station obtient une adresse IP :
 
-- le point d'acces `LaserCatToy` reste disponible pour configurer l'appareil ;
-- la partie station peut se connecter au WiFi choisi via la page Web.
+- le point d'acces `LaserCatToy` sert a la configuration initiale ;
+- le point d'acces disparait apres connexion au WiFi choisi ;
+- le DNS captif ne repond que lorsque l'AP de configuration est actif.
 
 ### Page principale
 
@@ -177,12 +185,14 @@ Cette page permet :
 - de voir l'etat du jouet : `ON` ou `OFF` ;
 - d'activer le jouet avec `/on` ;
 - de couper le jouet avec `/off` ;
+- de lancer une impulsion laser courte avec `/laser/pulse?ms=1000` ;
 - d'aller vers la configuration WiFi.
 
 Quand le jouet est coupe :
 
 - le laser est eteint ;
 - les servos reviennent vers la position de repos ;
+- les pulses servo restent actifs pendant `SERVO_REST_SETTLE_MS` avant coupure ;
 - le moteur de patterns attend avant de lancer une nouvelle scene.
 
 ### Page WiFi

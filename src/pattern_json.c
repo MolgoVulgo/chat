@@ -91,9 +91,9 @@ static bool parse_coord(cJSON *step, const char *name, int16_t *out)
     return true;
 }
 
-static bool id_seen(const char *id, uint8_t pattern_count)
+static bool id_seen(const char *id, uint16_t pattern_count)
 {
-    for (uint8_t i = 0; i < pattern_count; i++) {
+    for (uint16_t i = 0; i < pattern_count; i++) {
         if (strcmp(uploaded_ids[i], id) == 0) {
             return true;
         }
@@ -214,7 +214,7 @@ bool pattern_json_load(const char *json,
             set_message(message, message_len, "Pattern invalide.");
             return false;
         }
-        if (id_seen(id->valuestring, (uint8_t)i)) {
+        if (id_seen(id->valuestring, (uint16_t)i)) {
             cJSON_Delete(root);
             set_message(message, message_len, "Id de pattern duplique.");
             return false;
@@ -262,7 +262,7 @@ bool pattern_json_load(const char *json,
     }
 
     uploaded_pack.patterns = uploaded_patterns;
-    uploaded_pack.pattern_count = (uint8_t)pattern_count;
+    uploaded_pack.pattern_count = (uint16_t)pattern_count;
     uploaded_pack.capture_every = capture_every;
     uploaded_pack.source_name = "uploaded JSON";
     uploaded_pack.json_source = NULL;

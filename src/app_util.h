@@ -6,7 +6,7 @@
 #include "main.h"
 #include "freertos/FreeRTOS.h"
 
-#define ARRAY_SIZE(a) ((uint8_t)(sizeof(a) / sizeof((a)[0])))
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 static inline portTickType ms_to_ticks_min1(uint32_t ms)
 {

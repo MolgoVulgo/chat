@@ -2110,6 +2110,58 @@
       ]
     },
     {
+      "id": "capture",
+      "name": "Capture",
+      "category": "frustration_reduction",
+      "weight": 0,
+      "intensity": "low",
+      "point_count": 6,
+      "description": "Phase de capture lente issue du JSON compile, jouee periodiquement pour permettre au chat de rejoindre le point.",
+      "steps": [
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.16,
+          "y": -0.18,
+          "duration_ms": 2800
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.06,
+          "y": -0.28,
+          "duration_ms": 3000
+        },
+        {
+          "type": "move",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.35,
+          "duration_ms": 3200
+        },
+        {
+          "type": "hold",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.35,
+          "duration_ms": 6000
+        },
+        {
+          "type": "jitter",
+          "laser": true,
+          "x": 0.0,
+          "y": -0.35,
+          "duration_ms": 2600,
+          "amplitude": 0.01
+        },
+        {
+          "type": "off_hold",
+          "laser": false,
+          "duration_ms": 1800
+        }
+      ]
+    },
+    {
       "id": "gentle_hex_walk",
       "name": "Hexagone doux",
       "category": "geometric_soft",

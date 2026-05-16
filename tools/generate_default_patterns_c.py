@@ -15,6 +15,12 @@ STEP_TYPES = {
     "off_move": "STEP_OFF_MOVE",
 }
 
+MAX_PATTERN_COUNT = 16
+MAX_TOTAL_STEPS = 360
+MAX_PATTERN_ID_LEN = 31
+MAX_PATTERN_NAME_LEN = 47
+MAX_STEP_COUNT = 65535
+
 
 def coord_to_int(value):
     return int(round(float(value) * 1000))
@@ -43,6 +49,19 @@ def main():
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
     patterns = data["patterns"]
     capture_every = int(data.get("runtime", {}).get("capture_every", 0) or 0)
+    total_steps = sum(len(pattern.get("steps", [])) for pattern in patterns)
+
+    if len(patterns) > MAX_PATTERN_COUNT:
+        raise SystemExit(f"too many patterns for firmware: {len(patterns)} > {MAX_PATTERN_COUNT}")
+    if total_steps > MAX_TOTAL_STEPS:
+        raise SystemExit(f"too many steps for firmware: {total_steps} > {MAX_TOTAL_STEPS}")
+    for pattern in patterns:
+        if len(str(pattern["id"])) > MAX_PATTERN_ID_LEN:
+            raise SystemExit(f"pattern id too long: {pattern['id']}")
+        if len(str(pattern.get("name", pattern["id"]))) > MAX_PATTERN_NAME_LEN:
+            raise SystemExit(f"pattern name too long: {pattern['id']}")
+        if len(pattern.get("steps", [])) > MAX_STEP_COUNT:
+            raise SystemExit(f"too many steps in pattern: {pattern['id']}")
 
     HEADER.write_text(
         "#ifndef LASER_CAT_TOY_DEFAULT_PATTERNS_H\n"
@@ -89,7 +108,7 @@ def main():
     lines.append("")
     lines.append("const pattern_pack_t default_pattern_pack ICACHE_RODATA_ATTR = {")
     lines.append("    default_patterns,")
-    lines.append("    (uint8_t)(sizeof(default_patterns) / sizeof(default_patterns[0])),")
+    lines.append("    (uint16_t)(sizeof(default_patterns) / sizeof(default_patterns[0])),")
     lines.append(f"    {capture_every},")
     lines.append('    "compiled default_patterns.json",')
     lines.append("    NULL,")
