@@ -11,17 +11,16 @@ Le laser ne suit plus des mouvements aléatoires indépendants. Le code utilise 
 - les deux servos bougent ensemble dans un espace de coordonnées interne ;
 - les transitions sont interpolées avec une courbe `smoothstep` pour éviter les mouvements brusques ;
 - le laser peut s'éteindre pendant certains déplacements invisibles ;
-- plusieurs patterns simulent des comportements de proie : souris lente au sol, exploration de bord, cachette, spirale lente, retour au calme, etc. ;
-- le pack par défaut est généré depuis `tools/examples/default_patterns.json`.
+- plusieurs patterns simulent des comportements de proie ;
+- le runtime peut charger des patterns au format binaire `patterns.dat` v2.
 
-Les patterns par défaut sont convertis en C dans `src/default_patterns.c` via :
+Les patterns par défaut compilés sont générés en C dans `src/default_patterns.c` via :
 
 ```sh
 python3 tools/generate_default_patterns_c.py
 ```
 
 Par défaut, l'ESP utilise ce pack compilé pour préserver la RAM du serveur web.
-L'upload JSON direct côté firmware est désactivé par `PATTERN_JSON_UPLOAD_ENABLED`.
 
 ## Matériel
 
@@ -239,21 +238,17 @@ Cette page permet :
 - régler la vitesse globale d'exécution ;
 - télécharger le pack actif généré depuis les structures runtime.
 
-Le pack compilé par défaut vient de `tools/examples/default_patterns.json`.
-Pour modifier ce pack, éditer le JSON avec l'outil Python puis régénérer
-`src/default_patterns.c`. L'upload JSON firmware est coupé par défaut afin de
-garder assez de heap pour le serveur HTTP, le WiFi et les sockets.
+Le firmware supporte le chargement d'un pack `patterns.dat` au format v2.
+Le format exact est décrit dans [docs/patterns_dat_v2_format_explication.md](/home/kaj/Develop/000-PlatformIO/chat/docs/patterns_dat_v2_format_explication.md).
 
 Limites firmware principales :
 
-- schema supporté : `laser_cat_patterns.v1` ;
-- upload JSON firmware : `PATTERN_JSON_UPLOAD_ENABLED` ;
 - patterns maximum : `PATTERN_MAX_PATTERNS` ;
 - steps maximum : `PATTERN_MAX_TOTAL_STEPS` ;
 - vitesse globale : `PATTERN_SPEED_MIN_PERCENT` à `PATTERN_SPEED_MAX_PERCENT` ;
-- coordonnées JSON : `-1.0` à `+1.0`, converties en `-1000` à `+1000`.
+- coordonnées runtime firmware : `-1000` à `+1000`.
 
-La vitesse est un pourcentage : `100%` garde les durées JSON, `150%` accélère
+La vitesse est un pourcentage : `100%` garde les durées nominales, `150%` accélère
 les mouvements, `75%` les ralentit. Le réglage s'applique aux mouvements,
 pauses, jitter, transitions et pauses entre patterns.
 
@@ -317,10 +312,9 @@ Ouvrir le moniteur série :
 pio device monitor
 ```
 
-## Outils JSON Python
+## Outils Python DAT
 
-Les patterns JSON décrits dans `docs/chatchat.md` peuvent être validés,
-listés et visualisés avant transfert vers l'ESP.
+Les outils Python sont centrés sur `patterns.dat` v2 (validation, inspection, visualisation).
 
 Ouvrir la GUI locale de gestion des patterns :
 
@@ -331,37 +325,35 @@ Ouvrir la GUI locale de gestion des patterns :
 Ou ouvrir un fichier précis :
 
 ```sh
-./start.sh gui tools/examples/default_patterns.json
+./start.sh gui tools/patterns.dat
 ```
 
-Valider un fichier :
+Valider un fichier DAT :
 
 ```sh
-./start.sh validate tools/examples/default_patterns.json
+./start.sh validate tools/patterns.dat
 ```
 
 Lister les patterns :
 
 ```sh
-./start.sh list tools/examples/default_patterns.json
+./start.sh list tools/patterns.dat
+```
+
+Inspecter un DAT :
+
+```sh
+./start.sh inspect-dat tools/patterns.dat
 ```
 
 Exporter une visualisation PNG d'un pattern :
 
 ```sh
-./start.sh view tools/examples/default_patterns.json --pattern slow_floor_mouse --output pattern.png
+./start.sh view tools/patterns.dat --pattern <id_pattern> --output pattern.png
 ```
-
-Remplacer `slow_floor_mouse` par un autre identifiant existant du pack si besoin.
 
 La GUI utilise `tkinter`. L'export PNG nécessite `matplotlib`. La validation,
 la liste et l'aperçu GUI utilisent uniquement la bibliothèque standard Python.
-
-Coordonnées JSON :
-
-- `x = -1.0` gauche, `x = +1.0` droite ;
-- `y = -1.0` bas, `y = +1.0` haut ;
-- les outils convertissent vers les coordonnées firmware `-1000` à `+1000`.
 
 Tests Python :
 
@@ -378,8 +370,8 @@ src/main.c       Bootstrap ESP8266 RTOS SDK et lancement des tâches
 src/hardware.*   GPIO, laser, conversion coordonnées -> servos, PWM servo
 src/game.*       Moteur de patterns et état ON/OFF du jouet
 src/pattern.h    Modèle compact partagé des patterns
-src/pattern_json.* Validation/conversion JSON uploadé vers structures runtime
-src/default_patterns.* Pack compilé généré depuis tools/examples/default_patterns.json
+src/pattern_store.* Chargement/validation du pack binaire patterns.dat
+src/default_patterns.* Pack compilé embarqué
 src/web.*        WiFi AP/station, portail captif DNS, serveur HTTP
 src/ota.*        Etat OTA, ecriture flash du slot inactif, redemarrage
 src/app_util.h   Helpers partagés temps/coordonnées

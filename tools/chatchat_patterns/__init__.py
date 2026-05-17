@@ -1,13 +1,11 @@
-"""Tools for CatChat pattern packs."""
+"""Tools for CatChat patterns.dat v2."""
 
-from .model import PatternPack, load_pattern_pack
-from .validator import ValidationIssue, ValidationResult, validate_pack_file, validate_pack_data
+from .binary import BinaryPack, BinaryPattern, BinaryPoint, read_dat_bytes, read_dat_file
 
 __all__ = [
-    "PatternPack",
-    "ValidationIssue",
-    "ValidationResult",
-    "load_pattern_pack",
-    "validate_pack_data",
-    "validate_pack_file",
+    "BinaryPack",
+    "BinaryPattern",
+    "BinaryPoint",
+    "read_dat_bytes",
+    "read_dat_file",
 ]
