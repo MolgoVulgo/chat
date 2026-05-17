@@ -77,6 +77,131 @@ def read_dat_file(path: str | Path) -> BinaryPack:
     return read_dat_bytes(Path(path).read_bytes())
 
 
+def write_dat_file(path: str | Path, patterns: list[BinaryPattern], flags: int | None = None) -> BinaryPack:
+    data = build_dat_bytes(patterns, flags=flags)
+    Path(path).write_bytes(data)
+    return read_dat_bytes(data)
+
+
+def build_dat_bytes(patterns: list[BinaryPattern], flags: int | None = None) -> bytes:
+    if not patterns:
+        raise ValueError("au moins un pattern est requis")
+    if len(patterns) > MAX_USER_PATTERNS:
+        raise ValueError("trop de patterns")
+
+    if flags is None:
+        flags = LPTN_GLOBAL_FLAG_HAS_CRC | LPTN_GLOBAL_FLAG_STRICT_BOUNDS
+
+    index_offset = HEADER_SIZE
+    data_offset = index_offset + len(patterns) * INDEX_SIZE
+    cursor = data_offset
+
+    point_blobs: list[bytes] = []
+    index_rows: list[tuple[bytes, int, int, int, int, int, int, int, int, int, int]] = []
+
+    for pattern in patterns:
+        raw_id = pattern.pattern_id.encode("ascii", errors="ignore")[:MAX_PATTERN_ID_LEN]
+        if not raw_id:
+            raise ValueError("pattern id invalide")
+        if len(pattern.points) == 0 or len(pattern.points) > MAX_POINTS_PER_PATTERN:
+            raise ValueError(f"point_count invalide pour {pattern.pattern_id}")
+
+        points_buf = bytearray()
+        duration_total = 0
+        x_min = 1000
+        x_max = 0
+        y_min = 1000
+        y_max = 0
+        for point in pattern.points:
+            _validate_binary_point(point.x, point.y, point.duration_ms, point.laser, point.action, point.arg)
+            points_buf.extend(
+                POINT_STRUCT.pack(
+                    point.x,
+                    point.y,
+                    point.duration_ms,
+                    point.laser,
+                    point.action,
+                    point.arg,
+                )
+            )
+            duration_total += point.duration_ms
+            x_min = min(x_min, point.x)
+            x_max = max(x_max, point.x)
+            y_min = min(y_min, point.y)
+            y_max = max(y_max, point.y)
+
+        points_blob = bytes(points_buf)
+        p_crc = zlib.crc32(points_blob) & 0xFFFFFFFF
+        point_blobs.append(points_blob)
+        index_rows.append(
+            (
+                raw_id.ljust(24, b"\0"),
+                cursor,
+                duration_total,
+                p_crc,
+                len(pattern.points),
+                pattern.weight,
+                pattern.flags,
+                x_min,
+                x_max,
+                y_min,
+                y_max,
+            )
+        )
+        cursor += len(points_blob)
+
+    file_size = cursor
+    if file_size > MAX_PATTERN_FILE_SIZE:
+        raise ValueError("patterns.dat trop grand")
+
+    payload = bytearray()
+    for row in index_rows:
+        payload.extend(INDEX_STRUCT.pack(*row))
+    for blob in point_blobs:
+        payload.extend(blob)
+    payload_crc32 = zlib.crc32(payload) & 0xFFFFFFFF
+
+    schema_hash = 0x76320001
+    header_wo_crc = HEADER_STRUCT.pack(
+        MAGIC,
+        FORMAT_VERSION,
+        LPTN_ENDIAN_LITTLE,
+        HEADER_SIZE,
+        file_size,
+        0,
+        payload_crc32,
+        index_offset,
+        len(patterns),
+        INDEX_SIZE,
+        data_offset,
+        POINT_SIZE,
+        flags,
+        schema_hash,
+        0,
+        0,
+    )
+    header_crc32 = zlib.crc32(header_wo_crc) & 0xFFFFFFFF
+    header = HEADER_STRUCT.pack(
+        MAGIC,
+        FORMAT_VERSION,
+        LPTN_ENDIAN_LITTLE,
+        HEADER_SIZE,
+        file_size,
+        header_crc32,
+        payload_crc32,
+        index_offset,
+        len(patterns),
+        INDEX_SIZE,
+        data_offset,
+        POINT_SIZE,
+        flags,
+        schema_hash,
+        0,
+        0,
+    )
+    return bytes(header + payload)
+
+
 def read_dat_bytes(data: bytes) -> BinaryPack:
     if len(data) < HEADER_SIZE:
         raise ValueError("patterns.dat trop court")

@@ -252,46 +252,6 @@ La vitesse est un pourcentage : `100%` garde les durées nominales, `150%` accé
 les mouvements, `75%` les ralentit. Le réglage s'applique aux mouvements,
 pauses, jitter, transitions et pauses entre patterns.
 
-## OTA
-
-Le firmware expose une page OTA :
-
-```text
-http://<ip-esp>/ota
-http://192.168.4.1/ota
-```
-
-La page affiche l'image active et attend le fichier :
-
-```text
-.pio/build/d1_mini_pro_ota/firmware.ota.bin
-```
-
-Ne pas envoyer `.pio/build/d1_mini_pro_ota/firmware.bin` : avec `esp8266-rtos-sdk`, PlatformIO genere encore une image scindee (`firmware.bin` + `firmware.bin.irom0text.bin`). Le projet cree donc un fichier OTA dedie `firmware.ota.bin` au format ESP8266 v2.
-
-Compiler l'image OTA :
-
-```sh
-pio run -e d1_mini_pro_ota
-```
-
-L'environnement `d1_mini_pro` reste le build serie historique. L'ecriture OTA flash est activee uniquement dans `d1_mini_pro_ota`.
-
-Le firmware coupe le jouet avant l'ecriture OTA, refuse les autres actions pendant la mise a jour, ecrit l'image sur le slot inactif, selectionne ce slot, puis redemarre.
-
-Pour amorcer un appareil en mode OTA, flasher le bootloader Espressif et l'image OTA a l'adresse `0x1000` :
-
-```sh
-python /home/kaj/.platformio/packages/tool-esptoolpy@1.30000.201119/esptool.py \
-  --chip esp8266 --port <port> --baud 115200 write_flash \
-  0x0 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/boot_v1.7.bin \
-  0x1000 .pio/build/d1_mini_pro_ota/firmware.ota.bin \
-  0xffc000 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/esp_init_data_default.bin \
-  0xffe000 /home/kaj/.platformio/packages/framework-esp8266-rtos-sdk/bin/blank.bin
-```
-
-Remplacer `<port>` par le port serie du module.
-
 ## Compilation
 
 Compiler :
@@ -373,7 +333,6 @@ src/pattern.h    Modèle compact partagé des patterns
 src/pattern_store.* Chargement/validation du pack binaire patterns.dat
 src/default_patterns.* Pack compilé embarqué
 src/web.*        WiFi AP/station, portail captif DNS, serveur HTTP
-src/ota.*        Etat OTA, ecriture flash du slot inactif, redemarrage
 src/app_util.h   Helpers partagés temps/coordonnées
 ```
 
