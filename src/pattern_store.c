@@ -1,6 +1,7 @@
 #include "pattern_store.h"
 
 #include "logging.h"
+#include "main.h"
 #include "pattern_dat.h"
 
 #include <string.h>
@@ -20,6 +21,9 @@
 #define PATTERN_STORE_TEMP   "patterns.tmp"
 #define PATTERN_STORE_BACKUP "patterns.bak"
 #define PATTERN_STORE_MAX_UPLOAD_BYTES 65536u
+#define DAT_HEADER_SIZE 48u
+#define DAT_INDEX_SIZE 48u
+#define DAT_POINT_SIZE 10u
 
 static bool store_ready = false;
 static char store_status[96] = "SPIFFS non initialise.";
@@ -31,6 +35,35 @@ static uint32_t rw_buf[(128u + 8u) / 4u];
 static spiffs_file upload_fd = -1;
 static uint32_t upload_expected = 0;
 static uint32_t upload_written = 0;
+static uint32_t pattern_point_offsets[PATTERN_MAX_PATTERNS];
+static uint16_t pattern_point_counts[PATTERN_MAX_PATTERNS];
+static pattern_step_t *runtime_steps = NULL;
+static uint16_t runtime_steps_capacity = 0;
+static pattern_t runtime_pattern;
+static const pattern_pack_t *active_store_pack = NULL;
+
+static uint16_t read_le16(const uint8_t *p)
+{
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static uint32_t read_le32(const uint8_t *p)
+{
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static int16_t x_u16_to_internal(uint16_t x)
+{
+    return (int16_t)((int32_t)x * 2 - 1000);
+}
+
+static int16_t y_u16_to_internal(uint16_t y)
+{
+    return (int16_t)(1000 - ((int32_t)y * 2));
+}
 
 static s32_t flash_rw(uint32_t addr, uint32_t size, uint8_t *data, bool write)
 {
@@ -179,6 +212,7 @@ bool pattern_store_load_active_pack(const pattern_pack_t **pack, char *message, 
     if (pack != NULL) {
         *pack = NULL;
     }
+    active_store_pack = NULL;
     if (!store_ready) {
         snprintf(message, message_len, "SPIFFS indisponible.");
         return false;
@@ -207,6 +241,118 @@ bool pattern_store_load_active_pack(const pattern_pack_t **pack, char *message, 
     }
     SPIFFS_close(&store_fs, fd);
     ok = pattern_dat_load(buf, st.size, pack, message, message_len);
+    if (ok && pack != NULL && *pack != NULL) {
+        uint32_t index_offset = read_le32(buf + 20);
+        uint16_t pattern_count = read_le16(buf + 24);
+        uint32_t data_offset = read_le32(buf + 28);
+        for (uint16_t i = 0; i < pattern_count && i < PATTERN_MAX_PATTERNS; i++) {
+            const uint8_t *rec = buf + index_offset + ((uint32_t)i * DAT_INDEX_SIZE);
+            uint32_t point_offset = read_le32(rec + 24);
+            uint16_t point_count = read_le16(rec + 36);
+            uint32_t points_end = point_offset + ((uint32_t)point_count * DAT_POINT_SIZE);
+            if (point_count == 0 || point_offset < data_offset || points_end > st.size) {
+                ok = false;
+                snprintf(message, message_len, "index patterns.dat invalide.");
+                break;
+            }
+            pattern_point_offsets[i] = point_offset;
+            pattern_point_counts[i] = point_count;
+        }
+        if (ok) {
+            active_store_pack = *pack;
+        }
+    }
     free(buf);
     return ok;
+}
+
+bool pattern_store_load_pattern_by_index(uint16_t pattern_index,
+                                         const pattern_t **pattern,
+                                         char *message,
+                                         size_t message_len)
+{
+    if (pattern != NULL) {
+        *pattern = NULL;
+    }
+    if (!store_ready || active_store_pack == NULL) {
+        snprintf(message, message_len, "Pack store indisponible.");
+        return false;
+    }
+    if (pattern_index >= active_store_pack->pattern_count) {
+        snprintf(message, message_len, "Index pattern invalide.");
+        return false;
+    }
+
+    uint16_t point_count = pattern_point_counts[pattern_index];
+    uint32_t point_offset = pattern_point_offsets[pattern_index];
+    if (point_count == 0 || point_count > PATTERN_MAX_TOTAL_STEPS) {
+        snprintf(message, message_len, "Nombre de points invalide.");
+        return false;
+    }
+    if (runtime_steps_capacity < point_count) {
+        pattern_step_t *new_steps = (pattern_step_t *)realloc(runtime_steps, point_count * sizeof(pattern_step_t));
+        if (new_steps == NULL) {
+            snprintf(message, message_len, "Memoire insuffisante steps.");
+            return false;
+        }
+        runtime_steps = new_steps;
+        runtime_steps_capacity = point_count;
+    }
+
+    spiffs_file fd = SPIFFS_open(&store_fs, PATTERN_STORE_FILE, SPIFFS_RDONLY, 0);
+    if (fd < 0) {
+        snprintf(message, message_len, "Ouverture patterns.dat echouee.");
+        return false;
+    }
+    if (SPIFFS_lseek(&store_fs, fd, (s32_t)point_offset, SPIFFS_SEEK_SET) < 0) {
+        SPIFFS_close(&store_fs, fd);
+        snprintf(message, message_len, "Seek patterns.dat echoue.");
+        return false;
+    }
+
+    uint8_t pt[DAT_POINT_SIZE];
+    for (uint16_t i = 0; i < point_count; i++) {
+        if (SPIFFS_read(&store_fs, fd, pt, DAT_POINT_SIZE) != DAT_POINT_SIZE) {
+            SPIFFS_close(&store_fs, fd);
+            snprintf(message, message_len, "Lecture point patterns.dat echouee.");
+            return false;
+        }
+        uint16_t x = read_le16(pt + 0);
+        uint16_t y = read_le16(pt + 2);
+        uint16_t duration = read_le16(pt + 4);
+        uint8_t laser = pt[6];
+        uint8_t action = pt[7];
+        uint16_t arg = read_le16(pt + 8);
+        if (x > 1000 || y > 1000 || duration < PATTERN_MIN_DURATION_MS || duration > 10000 ||
+            laser > 1 || action > 4) {
+            SPIFFS_close(&store_fs, fd);
+            snprintf(message, message_len, "Point pattern invalide.");
+            return false;
+        }
+        pattern_step_t *dst = &runtime_steps[i];
+        dst->type = action == 0 ? STEP_HOLD :
+                    action == 1 ? STEP_MOVE :
+                    action == 2 ? STEP_JITTER :
+                    action == 3 ? STEP_OFF_HOLD : STEP_OFF_MOVE;
+        dst->laser = laser != 0;
+        dst->x = x_u16_to_internal(x);
+        dst->y = y_u16_to_internal(y);
+        dst->duration_ms = duration;
+        dst->amplitude = arg > PATTERN_MAX_JITTER_AMPLITUDE ? PATTERN_MAX_JITTER_AMPLITUDE : arg;
+    }
+    SPIFFS_close(&store_fs, fd);
+
+    runtime_pattern = active_store_pack->patterns[pattern_index];
+    runtime_pattern.steps = runtime_steps;
+    if (pattern != NULL) {
+        *pattern = &runtime_pattern;
+    }
+    snprintf(message, message_len, "Pattern charge: %s (%u points).",
+             runtime_pattern.id, (unsigned)point_count);
+    return true;
+}
+
+bool pattern_store_is_active_pack(const pattern_pack_t *pack)
+{
+    return pack != NULL && pack == active_store_pack;
 }

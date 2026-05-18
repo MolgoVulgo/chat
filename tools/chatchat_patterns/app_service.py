@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .binary import BinaryPack, BinaryPattern, read_dat_file
+from .binary import BinaryPack, BinaryPattern, build_dat_bytes, read_dat_bytes, read_dat_file, write_dat_file
+from .pattern_json import binary_pack_to_json_data, json_data_to_binary_patterns, load_json_patterns, save_json_patterns
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,26 @@ class PatternAppService:
                 f"points={len(pattern.points)}\tduration_ms={pattern.duration_total_ms}"
             )
         return lines
+
+    def load_json(self, json_path: str | Path) -> DatInspectResult:
+        data = load_json_patterns(json_path)
+        patterns = json_data_to_binary_patterns(data)
+        raw_dat = build_dat_bytes(patterns)
+        pack = read_dat_bytes(raw_dat)
+        return DatInspectResult(path=Path(json_path), pack=pack, summary=self._build_summary(json_path, pack))
+
+    def save_json(self, json_path: str | Path, data: dict) -> None:
+        save_json_patterns(json_path, data)
+
+    def dat_to_json_data(self, dat_path: str | Path) -> dict:
+        pack = read_dat_file(dat_path)
+        return binary_pack_to_json_data(pack, source_name=Path(dat_path).stem)
+
+    def export_json_to_dat(self, json_path: str | Path, dat_path: str | Path) -> DatInspectResult:
+        data = load_json_patterns(json_path)
+        patterns = json_data_to_binary_patterns(data)
+        pack = write_dat_file(dat_path, patterns)
+        return DatInspectResult(path=Path(dat_path), pack=pack, summary=self._build_summary(dat_path, pack))
 
     @staticmethod
     def _build_summary(dat_path: str | Path, pack: BinaryPack) -> str:

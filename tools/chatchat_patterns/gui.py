@@ -18,6 +18,7 @@ from .binary import (
     LPTN_ACTION_OFF_MOVE,
     write_dat_file,
 )
+from .pattern_json import binary_pack_to_json_data, json_data_to_binary_patterns
 
 ACTION_TO_NAME = {
     LPTN_ACTION_HOLD: "hold",
@@ -36,8 +37,10 @@ class PatternGui:
         self.root.title("CatChat Patterns DAT")
 
         self.path: Path | None = None
+        self.json_path: Path | None = None
+        self.source_json_data: dict | None = None
         self.pack = None
-        self.status = StringVar(value="Aucun fichier DAT charge")
+        self.status = StringVar(value="Aucun fichier DAT/JSON charge")
 
         self.zoom = 1.0
         self.pan_x = 0.0
@@ -73,16 +76,11 @@ class PatternGui:
     def _build_ui(self) -> None:
         self._build_menu()
 
+        self.btn_undo = None
+        self.btn_redo = None
+
         toolbar = ttk.Frame(self.root, padding=6)
         toolbar.pack(fill=X)
-        ttk.Button(toolbar, text="Ouvrir DAT", command=self.open_dat).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(toolbar, text="Enregistrer", command=self.save_dat).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(toolbar, text="Enregistrer sous", command=self.save_dat_as).pack(side=LEFT, padx=(0, 6))
-        self.btn_undo = ttk.Button(toolbar, text="Arriere", command=self.undo_last)
-        self.btn_undo.pack(side=LEFT, padx=(0, 6))
-        self.btn_redo = ttk.Button(toolbar, text="Avant", command=self.redo_last)
-        self.btn_redo.pack(side=LEFT, padx=(0, 6))
-        ttk.Button(toolbar, text="Inspecter", command=self.inspect_dat).pack(side=LEFT, padx=(0, 6))
         ttk.Checkbutton(
             toolbar,
             text="Mode edition",
@@ -90,7 +88,7 @@ class PatternGui:
             onvalue="1",
             offvalue="0",
             command=self._on_edit_mode_changed,
-        ).pack(side=LEFT, padx=(8, 6))
+        ).pack(side=LEFT, padx=(0, 6))
         ttk.Label(toolbar, textvariable=self.status).pack(side=LEFT, padx=(12, 0))
 
         main = ttk.PanedWindow(self.root, orient="horizontal")
@@ -98,7 +96,7 @@ class PatternGui:
 
         left = ttk.Frame(main, padding=6)
         main.add(left, weight=1)
-        ttk.Label(left, text="Patterns DAT").pack(anchor="w")
+        ttk.Label(left, text="Patterns").pack(anchor="w")
         self.patterns = Listbox(left, height=18, exportselection=False)
         self.patterns.pack(fill=BOTH, expand=True)
         self.patterns.bind("<<ListboxSelect>>", lambda _event: self.select_pattern())
@@ -190,7 +188,7 @@ class PatternGui:
 
         inspect_frame = ttk.Frame(self.right_pane, padding=6)
         self.right_pane.add(inspect_frame, weight=1)
-        ttk.Label(inspect_frame, text="Inspection DAT").pack(anchor="w")
+        ttk.Label(inspect_frame, text="Inspection").pack(anchor="w")
         self.inspect_text = Text(inspect_frame, height=8, wrap="word")
         self.inspect_text.pack(fill=BOTH, expand=True)
 
@@ -199,11 +197,31 @@ class PatternGui:
 
     def _build_menu(self) -> None:
         menubar = Menu(self.root)
+
+        file_menu = Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Ouvrir DAT...", command=self.open_dat)
+        file_menu.add_command(label="Ouvrir JSON...", command=self.open_json)
+        file_menu.add_separator()
+        file_menu.add_command(label="Enregistrer DAT", command=self.save_dat)
+        file_menu.add_command(label="Enregistrer DAT sous...", command=self.save_dat_as)
+        file_menu.add_command(label="Enregistrer JSON", command=self.save_json)
+        file_menu.add_separator()
+        file_menu.add_command(label="Quitter", command=self.root.destroy)
+        menubar.add_cascade(label="Fichier", menu=file_menu)
+
         edit_menu = Menu(menubar, tearoff=0)
         edit_menu.add_command(label="Arriere", command=self.undo_last)
         edit_menu.add_command(label="Avant", command=self.redo_last)
         edit_menu.add_command(label="Regler historique annulation...", command=self.set_undo_depth)
         menubar.add_cascade(label="Edition", menu=edit_menu)
+
+        tools_menu = Menu(menubar, tearoff=0)
+        tools_menu.add_command(label="Exporter DAT", command=self.export_dat)
+        tools_menu.add_command(label="Importer DAT -> JSON", command=self.import_dat_to_json)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Inspecter", command=self.inspect_dat)
+        menubar.add_cascade(label="Outils", menu=tools_menu)
+
         self.root.config(menu=menubar)
 
     def _on_edit_mode_changed(self) -> None:
@@ -225,32 +243,37 @@ class PatternGui:
 
     def _update_undo_redo_state(self) -> None:
         state = "normal" if self.edit_mode.get() == "1" else "disabled"
-        self.btn_undo.configure(state=state)
-        self.btn_redo.configure(state=state)
+        if self.btn_undo is not None:
+            self.btn_undo.configure(state=state)
+        if self.btn_redo is not None:
+            self.btn_redo.configure(state=state)
 
     def _prompt_reload_previous_file(self) -> None:
         if not self.state_file.exists():
             return
         try:
             state = json.loads(self.state_file.read_text(encoding="utf-8"))
-            last_path = Path(state.get("last_dat_path", ""))
+            last_path = Path(state.get("last_path", state.get("last_dat_path", "")))
         except Exception:
             return
 
-        if not str(last_path) or not last_path.exists() or last_path.suffix.lower() != ".dat":
+        if not str(last_path) or not last_path.exists() or last_path.suffix.lower() not in (".dat", ".json"):
             return
 
         if messagebox.askyesno("Recharger", f"Recharger le dernier fichier ouvert ?\n{last_path}"):
             # Robust startup: keep app empty if stale/invalid file.
             try:
-                self.load_dat(last_path)
+                if last_path.suffix.lower() == ".json":
+                    self.load_json(last_path)
+                else:
+                    self.load_dat(last_path)
             except Exception:
                 pass
 
     def _save_last_file(self, path: Path) -> None:
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            self.state_file.write_text(json.dumps({"last_dat_path": str(path)}), encoding="utf-8")
+            self.state_file.write_text(json.dumps({"last_path": str(path)}), encoding="utf-8")
         except Exception:
             pass
 
@@ -262,9 +285,19 @@ class PatternGui:
         if filename:
             self.load_dat(Path(filename))
 
+    def open_json(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Ouvrir patterns.json",
+            filetypes=(("Patterns JSON", "*.json"), ("Tous les fichiers", "*.*")),
+        )
+        if filename:
+            self.load_json(Path(filename))
+
     def load_dat(self, path: Path) -> None:
         inspected = self.service.load_dat(path)
         self.path = path
+        self.json_path = None
+        self.source_json_data = binary_pack_to_json_data(inspected.pack, source_name=path.stem)
         self.pack = inspected.pack
         self.edited_points = {}
         self.history = {}
@@ -276,14 +309,134 @@ class PatternGui:
         self.status.set(f"DAT charge: {path}")
         self._save_last_file(path)
 
+    def load_json(self, path: Path) -> None:
+        inspected = self.service.load_json(path)
+        self.path = None
+        self.json_path = path
+        self.source_json_data = json.loads(path.read_text(encoding="utf-8"))
+        self.pack = inspected.pack
+        self.edited_points = {}
+        self.history = {}
+        self.redo_history = {}
+        self.selected_point_index = None
+        self.selected_indices.clear()
+        self._set_inspect_text(inspected.summary)
+        self._reload_pattern_list()
+        self.status.set(f"JSON charge: {path}")
+        self._save_last_file(path)
+
     def inspect_dat(self) -> None:
-        if self.path is None:
+        if self.path is None and self.json_path is None:
             self.open_dat()
             return
         try:
-            self.load_dat(self.path)
+            if self.path is not None:
+                self.load_dat(self.path)
+            elif self.json_path is not None:
+                self.load_json(self.json_path)
         except Exception as exc:
             messagebox.showerror("Ouverture impossible", str(exc))
+
+    def _sync_json_from_edited_points(self) -> None:
+        if self.pack is None or self.source_json_data is None:
+            return
+        patterns = self.source_json_data.get("patterns", [])
+        by_id = {p.pattern_id: p for p in self.pack.patterns}
+        for row in patterns:
+            pid = str(row.get("id", ""))
+            if pid not in by_id:
+                continue
+            p = by_id[pid]
+            src = self.edited_points.get(
+                p.pattern_id,
+                [{"x": pp.x, "y": pp.y, "duration_ms": pp.duration_ms, "laser": pp.laser, "action": pp.action, "arg": pp.arg} for pp in p.points],
+            )
+            steps = []
+            for sp in src:
+                action_name = ACTION_TO_NAME.get(int(sp["action"]), "move")
+                step = {
+                    "type": action_name,
+                    "laser": bool(int(sp["laser"])),
+                    "duration_ms": int(sp["duration_ms"]),
+                }
+                if action_name in ("hold", "move", "jitter", "off_move"):
+                    step["x"] = round((int(sp["x"]) - 500) / 500.0, 4)
+                    step["y"] = round((int(sp["y"]) - 500) / 500.0, 4)
+                if action_name == "jitter":
+                    step["amplitude"] = round(int(sp["arg"]) / 1000.0, 4)
+                steps.append(step)
+            row["steps"] = steps
+
+    def save_json(self) -> None:
+        if self.source_json_data is None:
+            messagebox.showerror("JSON", "Aucun JSON source charge.")
+            return
+        self._sync_json_from_edited_points()
+        if self.json_path is None:
+            filename = filedialog.asksaveasfilename(
+                title="Enregistrer patterns.json",
+                defaultextension=".json",
+                filetypes=(("Patterns JSON", "*.json"), ("Tous les fichiers", "*.*")),
+                initialfile="patterns.json",
+            )
+            if not filename:
+                return
+            self.json_path = Path(filename)
+        try:
+            self.service.save_json(self.json_path, self.source_json_data)
+            self.status.set(f"JSON enregistre: {self.json_path}")
+            self._save_last_file(self.json_path)
+        except Exception as exc:
+            messagebox.showerror("JSON", str(exc))
+
+    def export_dat(self) -> None:
+        if self.source_json_data is None:
+            messagebox.showerror("Export DAT", "Charge un JSON source d'abord.")
+            return
+        self._sync_json_from_edited_points()
+        filename = filedialog.asksaveasfilename(
+            title="Exporter patterns.dat",
+            defaultextension=".dat",
+            filetypes=(("Patterns DAT", "*.dat"), ("Tous les fichiers", "*.*")),
+            initialfile="patterns.dat",
+        )
+        if not filename:
+            return
+        try:
+            patterns = json_data_to_binary_patterns(self.source_json_data)
+            pack = write_dat_file(Path(filename), patterns)
+            self.path = Path(filename)
+            self.pack = pack
+            inspected = self.service.load_dat(self.path)
+            self._set_inspect_text(inspected.summary)
+            self._reload_pattern_list()
+            self.status.set(f"DAT exporte: {self.path}")
+            self._save_last_file(self.path)
+        except Exception as exc:
+            messagebox.showerror("Export DAT", str(exc))
+
+    def import_dat_to_json(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Importer patterns.dat",
+            filetypes=(("Patterns DAT", "*.dat"), ("Tous les fichiers", "*.*")),
+        )
+        if not filename:
+            return
+        out = filedialog.asksaveasfilename(
+            title="Enregistrer JSON importe",
+            defaultextension=".json",
+            filetypes=(("Patterns JSON", "*.json"), ("Tous les fichiers", "*.*")),
+            initialfile=f"{Path(filename).stem}.json",
+        )
+        if not out:
+            return
+        try:
+            data = self.service.dat_to_json_data(filename)
+            self.service.save_json(out, data)
+            self.load_json(Path(out))
+            self.status.set(f"DAT importe vers JSON: {out}")
+        except Exception as exc:
+            messagebox.showerror("Import DAT", str(exc))
 
     def _reload_pattern_list(self) -> None:
         self.patterns.delete(0, END)

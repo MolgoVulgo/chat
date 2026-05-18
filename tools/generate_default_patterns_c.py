@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 
@@ -22,6 +23,10 @@ MAX_PATTERN_NAME_LEN = 47
 MAX_STEP_COUNT = 65535
 MAX_WEIGHT = 255
 MAX_CAPTURE_EVERY = 255
+MIN_EXPANDED_STEP_DURATION_MS = 100
+DEFAULT_CURVE_STEPS = 10
+DEFAULT_ARC_STEPS = 16
+DEFAULT_LEMNISCATE_STEPS = 24
 
 
 def coord_to_int(value):
@@ -47,9 +52,169 @@ def c_string(value):
     return json.dumps(str(value), ensure_ascii=False)
 
 
+def clamp_norm(value):
+    v = float(value)
+    if v < -1.0:
+        return -1.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def split_duration(total_ms, count):
+    base = total_ms // count
+    rem = total_ms % count
+    return [base + (1 if i < rem else 0) for i in range(count)]
+
+
+def last_position(expanded_steps):
+    for step in reversed(expanded_steps):
+        t = step["type"]
+        if t in ("hold", "move", "jitter", "off_move"):
+            return float(step.get("x", 0.0)), float(step.get("y", 0.0))
+    return 0.0, 0.0
+
+
+def expand_curve(step, expanded_steps):
+    start_x, start_y = last_position(expanded_steps)
+    end_x = clamp_norm(step.get("x", start_x))
+    end_y = clamp_norm(step.get("y", start_y))
+    cx = clamp_norm(step["cx"])
+    cy = clamp_norm(step["cy"])
+    n_steps = int(step.get("steps", DEFAULT_CURVE_STEPS))
+    if n_steps < 2:
+        n_steps = 2
+    duration_ms = int(step["duration_ms"])
+    per_step = duration_ms // n_steps
+    if per_step < MIN_EXPANDED_STEP_DURATION_MS:
+        n_steps = max(2, duration_ms // MIN_EXPANDED_STEP_DURATION_MS)
+    durations = split_duration(duration_ms, n_steps)
+    laser = bool(step.get("laser", True))
+
+    out = []
+    for i in range(1, n_steps + 1):
+        t = i / n_steps
+        inv = 1.0 - t
+        x = inv * inv * start_x + 2.0 * inv * t * cx + t * t * end_x
+        y = inv * inv * start_y + 2.0 * inv * t * cy + t * t * end_y
+        out.append(
+            {
+                "type": "move",
+                "laser": laser,
+                "x": clamp_norm(x),
+                "y": clamp_norm(y),
+                "duration_ms": durations[i - 1],
+            }
+        )
+    return out
+
+
+def expand_arc(step):
+    cx = clamp_norm(step["cx"])
+    cy = clamp_norm(step["cy"])
+    rx = abs(float(step.get("radius_x", 0.0)))
+    ry = abs(float(step.get("radius_y", rx)))
+    a0 = float(step["angle_start_deg"])
+    a1 = float(step["angle_end_deg"])
+    n_steps = int(step.get("steps", DEFAULT_ARC_STEPS))
+    if n_steps < 2:
+        n_steps = 2
+    duration_ms = int(step["duration_ms"])
+    per_step = duration_ms // n_steps
+    if per_step < MIN_EXPANDED_STEP_DURATION_MS:
+        n_steps = max(2, duration_ms // MIN_EXPANDED_STEP_DURATION_MS)
+    durations = split_duration(duration_ms, n_steps)
+    laser = bool(step.get("laser", True))
+
+    out = []
+    for i in range(1, n_steps + 1):
+        t = i / n_steps
+        a = math.radians(a0 + (a1 - a0) * t)
+        x = cx + rx * math.cos(a)
+        y = cy + ry * math.sin(a)
+        out.append(
+            {
+                "type": "move",
+                "laser": laser,
+                "x": clamp_norm(x),
+                "y": clamp_norm(y),
+                "duration_ms": durations[i - 1],
+            }
+        )
+    return out
+
+
+def expand_lemniscate(step):
+    cx = clamp_norm(step["cx"])
+    cy = clamp_norm(step["cy"])
+    r = abs(float(step["radius"]))
+    n_steps = int(step.get("steps", DEFAULT_LEMNISCATE_STEPS))
+    if n_steps < 4:
+        n_steps = 4
+    duration_ms = int(step["duration_ms"])
+    per_step = duration_ms // n_steps
+    if per_step < MIN_EXPANDED_STEP_DURATION_MS:
+        n_steps = max(4, duration_ms // MIN_EXPANDED_STEP_DURATION_MS)
+    n1 = n_steps // 2
+    n2 = n_steps - n1
+    d1 = (duration_ms * n1) // n_steps
+    d2 = duration_ms - d1
+    laser = bool(step.get("laser", True))
+
+    arc_a = {
+        "type": "arc",
+        "laser": laser,
+        "cx": cx - (r / 2.0),
+        "cy": cy,
+        "radius_x": r / 2.0,
+        "radius_y": r,
+        "angle_start_deg": -90.0,
+        "angle_end_deg": 90.0,
+        "duration_ms": d1,
+        "steps": n1,
+    }
+    arc_b = {
+        "type": "arc",
+        "laser": laser,
+        "cx": cx + (r / 2.0),
+        "cy": cy,
+        "radius_x": r / 2.0,
+        "radius_y": r,
+        "angle_start_deg": 90.0,
+        "angle_end_deg": 270.0,
+        "duration_ms": d2,
+        "steps": n2,
+    }
+    return expand_arc(arc_a) + expand_arc(arc_b)
+
+
+def expand_steps(steps):
+    expanded = []
+    for step in steps:
+        step_type = step["type"]
+        if step_type == "curve":
+            expanded.extend(expand_curve(step, expanded))
+        elif step_type == "arc":
+            expanded.extend(expand_arc(step))
+        elif step_type == "lemniscate":
+            expanded.extend(expand_lemniscate(step))
+        else:
+            normalized = dict(step)
+            if step_type in ("hold", "move", "jitter", "off_move"):
+                normalized["x"] = clamp_norm(normalized.get("x", 0.0))
+                normalized["y"] = clamp_norm(normalized.get("y", 0.0))
+            expanded.append(normalized)
+    return expanded
+
+
 def main():
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
-    patterns = data["patterns"]
+    raw_patterns = data["patterns"]
+    patterns = []
+    for pattern in raw_patterns:
+        expanded_pattern = dict(pattern)
+        expanded_pattern["steps"] = expand_steps(pattern.get("steps", []))
+        patterns.append(expanded_pattern)
     capture_every = int(data.get("runtime", {}).get("capture_every", 0) or 0)
     total_steps = sum(len(pattern.get("steps", [])) for pattern in patterns)
 

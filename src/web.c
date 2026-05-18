@@ -6,6 +6,7 @@
 #include "logging.h"
 #include "main.h"
 #include "pattern_store.h"
+#include "web_assets.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -40,6 +41,11 @@ static void http_send_wifi(int client);
 static void http_send_patterns(int client);
 static void http_send_patterns_download(int client);
 static void http_handle_patterns_dat_upload(int client, const char *request, int request_len);
+static void http_send_captive(int client, bool use_gzip);
+
+static char http_chunk_buffer[768];
+static size_t http_chunk_buffer_used = 0;
+static int http_chunk_client = -1;
 
 static bool station_status_needs_config_ap(STATION_STATUS status)
 {
@@ -384,6 +390,32 @@ static void http_send(int client, const char *s)
     WEB_DEBUG_LOG("http send complete bytes=%d", written);
 }
 
+static void http_send_bytes(int client, const uint8_t *data, size_t len)
+{
+    const uint8_t *p = data;
+    int remaining = (int)len;
+    int retries = 0;
+
+    while (remaining > 0) {
+        int sent = send(client, (const char *)p, remaining, 0);
+        if (sent < 0) {
+            if (retries < 3) {
+                retries++;
+                vTaskDelay(ms_to_ticks_min1(10));
+                continue;
+            }
+            WEB_LOG("http send bytes failed remaining=%d errno=%d", remaining, errno);
+            return;
+        }
+        if (sent == 0) {
+            return;
+        }
+        retries = 0;
+        p += sent;
+        remaining -= sent;
+    }
+}
+
 static void http_send_response(int client,
                                const char *status,
                                const char *content_type,
@@ -419,9 +451,11 @@ static void http_send_chunked_start(int client, const char *status, const char *
              "\r\n",
              status, content_type);
     http_send(client, header);
+    http_chunk_client = client;
+    http_chunk_buffer_used = 0;
 }
 
-static void http_send_chunk_raw(int client, const char *data, size_t len)
+static void http_send_chunk_payload(int client, const char *data, size_t len)
 {
     char len_header[16];
     snprintf(len_header, sizeof(len_header), "%x\r\n", (unsigned)len);
@@ -439,6 +473,36 @@ static void http_send_chunk_raw(int client, const char *data, size_t len)
         }
     }
     http_send(client, "\r\n");
+}
+
+static void http_flush_chunk_buffer(int client)
+{
+    if (http_chunk_client != client || http_chunk_buffer_used == 0) {
+        return;
+    }
+    http_send_chunk_payload(client, http_chunk_buffer, http_chunk_buffer_used);
+    http_chunk_buffer_used = 0;
+}
+
+static void http_send_chunk_raw(int client, const char *data, size_t len)
+{
+    if (http_chunk_client != client) {
+        http_send_chunk_payload(client, data, len);
+        return;
+    }
+
+    if (len >= sizeof(http_chunk_buffer)) {
+        http_flush_chunk_buffer(client);
+        http_send_chunk_payload(client, data, len);
+        return;
+    }
+
+    if (http_chunk_buffer_used + len > sizeof(http_chunk_buffer)) {
+        http_flush_chunk_buffer(client);
+    }
+
+    memcpy(http_chunk_buffer + http_chunk_buffer_used, data, len);
+    http_chunk_buffer_used += len;
 }
 
 static void http_send_chunk(int client, const char *data)
@@ -465,32 +529,65 @@ static void http_send_chunkf(int client, const char *fmt, ...)
 
 static void http_send_chunked_end(int client)
 {
+    http_flush_chunk_buffer(client);
     http_send(client, "0\r\n\r\n");
+    if (http_chunk_client == client) {
+        http_chunk_client = -1;
+        http_chunk_buffer_used = 0;
+    }
 }
 
 static void http_send_chunk_escaped(int client, const char *s)
 {
-    while (s != NULL && *s != '\0') {
+    if (s == NULL) {
+        return;
+    }
+
+    char out[192];
+    size_t used = 0;
+
+    while (*s != '\0') {
+        const char *entity = NULL;
+        size_t entity_len = 0;
+
         switch (*s) {
         case '&':
-            http_send_chunk(client, "&amp;");
+            entity = "&amp;";
+            entity_len = 5;
             break;
         case '<':
-            http_send_chunk(client, "&lt;");
+            entity = "&lt;";
+            entity_len = 4;
             break;
         case '>':
-            http_send_chunk(client, "&gt;");
+            entity = "&gt;";
+            entity_len = 4;
             break;
         case '"':
-            http_send_chunk(client, "&quot;");
+            entity = "&quot;";
+            entity_len = 6;
             break;
-        default: {
-            char c[2] = {*s, '\0'};
-            http_send_chunk(client, c);
-            break;
+        default:
+            if (used + 1 >= sizeof(out)) {
+                out[used] = '\0';
+                http_send_chunk(client, out);
+                used = 0;
+            }
+            out[used++] = *s;
+            s++;
+            continue;
         }
+
+        if (used > 0) {
+            http_send_chunk_raw(client, out, used);
+            used = 0;
         }
+        http_send_chunk_raw(client, entity, entity_len);
         s++;
+    }
+
+    if (used > 0) {
+        http_send_chunk_raw(client, out, used);
     }
 }
 
@@ -550,9 +647,43 @@ static void http_send_home(int client)
     http_send_chunked_end(client);
 }
 
-static void http_send_captive(int client)
+static bool http_request_accepts_gzip(const char *request)
+{
+    const char *p = strstr(request, "\nAccept-Encoding:");
+    if (p == NULL) {
+        p = strstr(request, "\naccept-encoding:");
+    }
+    if (p == NULL) {
+        return false;
+    }
+    const char *line_end = strchr(p, '\n');
+    if (line_end == NULL) {
+        line_end = p + strlen(p);
+    }
+    const char *g = strstr(p, "gzip");
+    return g != NULL && g < line_end;
+}
+
+static void http_send_captive(int client, bool use_gzip)
 {
     WEB_LOG("captive page served");
+    if (use_gzip) {
+        char header[256];
+        snprintf(header, sizeof(header),
+                 "HTTP/1.1 200 OK\r\n"
+                 "Content-Type: text/html; charset=utf-8\r\n"
+                 "Content-Encoding: gzip\r\n"
+                 "Vary: Accept-Encoding\r\n"
+                 "Content-Length: %u\r\n"
+                 "Connection: close\r\n"
+                 "Cache-Control: no-store\r\n"
+                 "\r\n",
+                 (unsigned)CAPTIVE_PAGE_GZIP_LEN);
+        http_send(client, header);
+        http_send_bytes(client, captive_page_gzip, CAPTIVE_PAGE_GZIP_LEN);
+        return;
+    }
+
     const char *body =
         "<!doctype html><html><head>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -784,6 +915,10 @@ static void http_send_patterns_download(int client)
 
     for (uint16_t i = 0; i < pack->pattern_count; i++) {
         const pattern_t *pattern = &pack->patterns[i];
+        if (pattern->steps == NULL) {
+            http_send(client, "{\"error\":\"download indisponible pour pack charge a la demande\"}\n");
+            return;
+        }
         snprintf(chunk, sizeof(chunk),
                  "%s{\"id\":",
                  i == 0 ? "" : ",");
@@ -1119,6 +1254,7 @@ static void http_handle_request(int client, char *request, int request_len)
     char path[384];
     char method[8];
     char host[96];
+    bool use_gzip = http_request_accepts_gzip(request);
     char *start = strchr(request, ' ');
     char *end;
 
@@ -1127,14 +1263,14 @@ static void http_handle_request(int client, char *request, int request_len)
     sscanf(request, "%7s", method);
 
     if (start == NULL) {
-        http_send_captive(client);
+        http_send_captive(client, use_gzip);
         return;
     }
 
     start++;
     end = strchr(start, ' ');
     if (end == NULL) {
-        http_send_captive(client);
+        http_send_captive(client, use_gzip);
         return;
     }
 
@@ -1221,10 +1357,10 @@ static void http_handle_request(int client, char *request, int request_len)
                strcmp(path, "/connecttest.txt") == 0 ||
                strcmp(path, "/redirect") == 0) {
         WEB_LOG("captive probe host=%s path=%s -> serve captive landing", host, path);
-        http_send_captive(client);
+        http_send_captive(client, use_gzip);
     } else {
         WEB_LOG("unknown path served as captive host=%s path=%s", host, path);
-        http_send_captive(client);
+        http_send_captive(client, use_gzip);
     }
 }
 

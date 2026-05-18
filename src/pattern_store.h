@@ -14,5 +14,10 @@ bool pattern_store_begin_upload(uint32_t expected_len, char *message, size_t mes
 bool pattern_store_write_upload_chunk(const uint8_t *data, uint32_t len, char *message, size_t message_len);
 bool pattern_store_finish_upload(char *message, size_t message_len);
 bool pattern_store_load_active_pack(const pattern_pack_t **pack, char *message, size_t message_len);
+bool pattern_store_load_pattern_by_index(uint16_t pattern_index,
+                                         const pattern_t **pattern,
+                                         char *message,
+                                         size_t message_len);
+bool pattern_store_is_active_pack(const pattern_pack_t *pack);
 
 #endif

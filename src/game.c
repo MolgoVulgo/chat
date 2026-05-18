@@ -5,6 +5,7 @@
 #include "hardware.h"
 #include "logging.h"
 #include "main.h"
+#include "pattern_store.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -169,12 +170,12 @@ int16_t game_get_selected_pattern(void)
 const char *game_get_selected_pattern_id(void)
 {
     const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
-    int16_t index = selected_pattern_index;
+    int16_t selected_index = selected_pattern_index;
 
-    if (index < 0 || index >= (int16_t)pack->pattern_count) {
+    if (selected_index < 0 || selected_index >= (int16_t)pack->pattern_count) {
         return "auto";
     }
-    return pack->patterns[index].id;
+    return pack->patterns[selected_index].id;
 }
 
 void game_set_speed_percent(uint16_t new_speed_percent)
@@ -425,47 +426,46 @@ static void set_game_position(int16_t x, int16_t y)
     hardware_set_position_from_coord(current_x, current_y);
 }
 
-static const pattern_t *choose_weighted_pattern(void)
+static int16_t choose_weighted_pattern_index(const pattern_pack_t *pack)
 {
     uint16_t total = 0;
-    const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
 
     for (uint16_t i = 0; i < pack->pattern_count; i++) {
         total += pack->patterns[i].weight;
     }
 
     if (total == 0) {
-        return &pack->patterns[0];
+        return 0;
     }
 
     uint16_t draw = (uint16_t)random_range(0, total);
 
     for (uint16_t i = 0; i < pack->pattern_count; i++) {
         if (draw < pack->patterns[i].weight) {
-            return &pack->patterns[i];
+            return (int16_t)i;
         }
         draw -= pack->patterns[i].weight;
     }
 
-    return &pack->patterns[0];
+    return 0;
 }
 
-static const pattern_t *find_capture_pattern(const pattern_pack_t *pack)
+static int16_t find_capture_pattern_index(const pattern_pack_t *pack)
 {
     if (pack == NULL) {
-        return NULL;
+        return -1;
     }
 
     for (uint16_t i = 0; i < pack->pattern_count; i++) {
         if (strcmp(pack->patterns[i].id, "capture") == 0) {
-            return &pack->patterns[i];
+            return (int16_t)i;
         }
     }
 
     if (pack->pattern_count > 0) {
-        return &pack->patterns[pack->pattern_count - 1];
+        return (int16_t)(pack->pattern_count - 1);
     }
-    return NULL;
+    return -1;
 }
 
 static bool step_has_position(const pattern_step_t *step)
@@ -747,39 +747,50 @@ void game_movement_task(void *arg)
             continue;
         }
 
-        const pattern_t *pattern;
         const pattern_pack_t *pack = active_pack == NULL ? &default_pattern_pack : active_pack;
         uint8_t capture_every = pack->capture_every == 0 ? PATTERN_CAPTURE_EVERY : pack->capture_every;
-        const pattern_t *capture = find_capture_pattern(pack);
+        int16_t capture_index = find_capture_pattern_index(pack);
+        int16_t pattern_index = -1;
 
         int16_t selected = selected_pattern_index;
         active_run_revision = pattern_control_revision;
         if (selected >= 0 && selected < (int16_t)pack->pattern_count) {
-            pattern = &pack->patterns[selected];
+            pattern_index = selected;
             PATTERN_LOG("choose reason=manual index=%d id=%s speed=%u revision=%u",
                         selected,
-                        pattern->id,
+                        pack->patterns[selected].id,
                         speed_percent,
                         (unsigned)active_run_revision);
-        } else if (capture != NULL && since_capture >= capture_every) {
-            pattern = capture;
+        } else if (capture_index >= 0 && since_capture >= capture_every) {
+            pattern_index = capture_index;
             since_capture = 0;
             PATTERN_LOG("choose reason=capture id=%s speed=%u revision=%u",
-                        pattern->id,
+                        pack->patterns[pattern_index].id,
                         speed_percent,
                         (unsigned)active_run_revision);
         } else {
-            pattern = choose_weighted_pattern();
+            pattern_index = choose_weighted_pattern_index(pack);
             since_capture++;
             PATTERN_LOG("choose reason=weighted id=%s since_capture=%u/%u speed=%u revision=%u",
-                        pattern->id,
+                        pack->patterns[pattern_index].id,
                         since_capture,
                         capture_every,
                         speed_percent,
                         (unsigned)active_run_revision);
         }
 
-        run_pattern(pattern);
+        const pattern_t *pattern_to_run = &pack->patterns[pattern_index];
+        if (pattern_store_is_active_pack(pack)) {
+            char load_message[96];
+            if (!pattern_store_load_pattern_by_index((uint16_t)pattern_index, &pattern_to_run, load_message, sizeof(load_message))) {
+                PATTERN_LOG("pattern load failed index=%d msg=%s", pattern_index, load_message);
+                wait_enabled_delay(scaled_duration((uint32_t)random_range(800, 1800)));
+                continue;
+            }
+            PATTERN_LOG("pattern loaded on-demand index=%d id=%s", pattern_index, pattern_to_run->id);
+        }
+
+        run_pattern(pattern_to_run);
 
         hardware_laser_set(true);
         wait_enabled_delay(scaled_duration((uint32_t)random_range(800, 1800)));
