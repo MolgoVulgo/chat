@@ -107,7 +107,7 @@
 #define CONFIG_AP_IP_B          168
 #define CONFIG_AP_IP_C          4
 #define CONFIG_AP_IP_D          1
-#define WIFI_SCAN_MAX_RESULTS   24
+#define WIFI_SCAN_MAX_RESULTS   5
 #define HTTP_SOCKET_TIMEOUT_MS  3000
 
 void user_init(void);

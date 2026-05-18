@@ -5,6 +5,7 @@
 #include "game.h"
 #include "hardware.h"
 #include "logging.h"
+#include "pattern_store.h"
 #include "web.h"
 
 #include "esp_common.h"
@@ -43,6 +44,17 @@ void user_init(void)
 
     hardware_init();
     game_set_enabled(false);
+    pattern_store_init();
+    {
+        const pattern_pack_t *pack = NULL;
+        char message[96];
+        if (pattern_store_load_active_pack(&pack, message, sizeof(message)) && pack != NULL) {
+            game_use_pattern_pack(pack, message);
+            APP_LOG("patterns.dat active: %s", message);
+        } else {
+            APP_LOG("patterns.dat not loaded: %s", message);
+        }
+    }
     web_portal_init();
 
     APP_LOG("Laser Cat Toy ESP8266 RTOS start - pattern engine");
@@ -52,7 +64,6 @@ void user_init(void)
 
     xTaskCreate(hardware_servo_pwm_task, "servo_pwm", 384, NULL, 5, NULL);
     xTaskCreate(game_movement_task, "movement", 768, NULL, 3, NULL);
-    xTaskCreate(web_http_server_task, "http", 3072, NULL, 4, NULL);
-    xTaskCreate(web_dns_server_task, "dns", 768, NULL, 4, NULL);
+    xTaskCreate(web_http_server_task, "http", 2048, NULL, 4, NULL);
     xTaskCreate(web_wifi_status_task, "wifi_status", 512, NULL, 2, NULL);
 }
