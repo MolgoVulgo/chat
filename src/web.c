@@ -39,9 +39,14 @@ static volatile bool dns_task_stop_requested = false;
 
 static void http_send_wifi(int client);
 static void http_send_patterns(int client);
+static void http_send_settings(int client);
 static void http_send_patterns_download(int client);
 static void http_handle_patterns_dat_upload(int client, const char *request, int request_len);
 static void http_send_captive(int client, bool use_gzip);
+static void http_handle_api_state(int client);
+static void http_handle_api_patterns(int client);
+static void http_handle_api_control(int client, const char *query);
+static void http_handle_api_settings(int client, const char *query);
 
 static char http_chunk_buffer[768];
 static size_t http_chunk_buffer_used = 0;
@@ -617,32 +622,39 @@ static void http_send_page_end(int client)
 
 static void http_send_home(int client)
 {
-    struct ip_info station_ip;
-    memset(&station_ip, 0, sizeof(station_ip));
-    wifi_get_ip_info(STATION_IF, &station_ip);
     http_send_chunked_start(client, "200 OK", "text/html; charset=utf-8");
-    http_send_page_start(client, "Laser Cat Toy", NULL);
-    http_send_chunkf(client,
-                     "<p>Jouet: <strong>%s</strong></p>"
-                     "<p>Laser: <strong>%s</strong></p>"
-                     "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
-                     "<p>WiFi: <strong>%s</strong></p>"
-                     "<p>IP: <strong>%s</strong></p>"
-                     "<p><a href='/on'>JEU ON</a><a class='off' href='/off'>JEU OFF</a></p>"
-                     "<p>"
-                     "<a href='/laser/test/on'>LASER ON TEST</a>"
-                     "<a href='/laser/test/invert'>TEST INVERSE</a>",
-                     game_is_enabled() ? "ON" : "OFF",
-                     hardware_laser_is_on() ? "ON" : "OFF",
-                     game_get_state_text(),
-                     (unsigned)(game_get_session_remaining_ms() / 1000u),
-                     (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
-                     station_status_text(),
-                     ipaddr_ntoa(&station_ip.ip));
-#if DEBUG_HARDWARE_ENABLED
-    http_send_chunk(client, "<a href='/laser/pulse?ms=1000'>Pulse laser</a>");
-#endif
-    http_send_chunk(client, "<a class='off' href='/laser/off'>LASER OFF</a><a href='/patterns'>Patterns</a></p>");
+    http_send_page_start(client, "Laser Cat Toy - Dashboard", "<meta http-equiv='cache-control' content='no-store'>");
+    http_send_chunk(client,
+                    "<p><a href='/patterns'>Patterns</a><a href='/settings'>Settings</a><a href='/wifi'>WiFi</a></p>"
+                    "<p>Etat: <strong id='st'>-</strong> | Session: <strong id='ses'>0</strong>s | Cooldown: <strong id='cd'>0</strong>s</p>"
+                    "<p>Laser: <strong id='laser'>-</strong> | Pattern: <strong id='curpat'>-</strong></p>"
+                    "<p><button id='on'>JEU ON</button><button class='off' id='off'>JEU OFF</button>"
+                    "<button id='lton'>LASER TEST ON</button><button class='off' id='ltoff'>LASER OFF</button></p>"
+                    "<div class='field'><label>Pattern</label><select id='pattern_sel'></select><button id='apply_pat'>Appliquer</button></div>"
+                    "<div class='field'><label>Vitesse (%)</label><input id='speed' type='number' min='25' max='300' step='5'><button id='apply_speed'>Appliquer</button></div>"
+                    "<p id='msg' class='muted'></p>"
+                    "<script>"
+                    "const st=document.getElementById('st'),ses=document.getElementById('ses'),cd=document.getElementById('cd'),laser=document.getElementById('laser'),curpat=document.getElementById('curpat'),msg=document.getElementById('msg');"
+                    "const sel=document.getElementById('pattern_sel'),spd=document.getElementById('speed');"
+                    "let stateData={state:'idle',session_s:0,cooldown_s:0,laser:'OFF',selected_pattern:'auto',speed:100};"
+                    "let tickTimer=null;"
+                    "async function j(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json();}"
+                    "async function t(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.text();}"
+                    "async function loadPatterns(){const d=await j('/api/patterns');sel.innerHTML='';for(const p of d.patterns){const o=document.createElement('option');o.value=p.index;o.textContent=p.label;sel.appendChild(o);}sel.value=d.selected;}"
+                    "function render(){st.textContent=stateData.state;ses.textContent=stateData.session_s;cd.textContent=stateData.cooldown_s;laser.textContent=stateData.laser;curpat.textContent=stateData.selected_pattern;spd.value=stateData.speed;}"
+                    "async function refresh(){stateData=await j('/api/state');render();ensureTick();}"
+                    "function tick(){if(stateData.session_s>0)stateData.session_s--;if(stateData.cooldown_s>0)stateData.cooldown_s--;render();"
+                    "if(stateData.session_s===0&&stateData.cooldown_s===0){clearInterval(tickTimer);tickTimer=null;refresh().catch(()=>{});}}"
+                    "function ensureTick(){const active=(stateData.session_s>0||stateData.cooldown_s>0);if(active&&tickTimer===null){tickTimer=setInterval(tick,1000);}if(!active&&tickTimer!==null){clearInterval(tickTimer);tickTimer=null;}}"
+                    "async function act(url,needRefresh){msg.textContent='...';try{msg.textContent=await t(url);if(needRefresh){await refresh();}}catch(e){msg.textContent='Erreur: '+e.message;}}"
+                    "document.getElementById('on').onclick=()=>act('/api/control?action=on',true);"
+                    "document.getElementById('off').onclick=()=>act('/api/control?action=off',true);"
+                    "document.getElementById('lton').onclick=()=>act('/api/control?action=laser_test_on',true);"
+                    "document.getElementById('ltoff').onclick=()=>act('/api/control?action=laser_off',true);"
+                    "document.getElementById('apply_pat').onclick=()=>act('/api/control?action=select_pattern&index='+encodeURIComponent(sel.value),false);"
+                    "document.getElementById('apply_speed').onclick=()=>act('/api/control?action=set_speed&value='+encodeURIComponent(spd.value),false);"
+                    "loadPatterns().then(()=>{render();}).catch(e=>msg.textContent='Erreur init: '+e.message);"
+                    "</script>");
     http_send_page_end(client);
     http_send_chunked_end(client);
 }
@@ -756,63 +768,9 @@ static void http_send_wifi(int client)
 
 static void http_send_patterns(int client)
 {
-    const pattern_pack_t *pack = game_get_pattern_pack();
-    uint16_t step_count = 0;
-
-    if (pack != NULL) {
-        for (uint16_t i = 0; i < pack->pattern_count; i++) {
-            step_count += pack->patterns[i].step_count;
-        }
-    }
-
     http_send_chunked_start(client, "200 OK", "text/html; charset=utf-8");
-    http_send_page_start(client, "Patterns DAT", NULL);
-    http_send_chunk(client, "<p>Etat: <strong>");
-    http_send_chunk_escaped(client, game_get_pattern_status());
-    http_send_chunk(client, "</strong></p><p>Source: <strong>");
-    http_send_chunk_escaped(client, pack == NULL || pack->source_name == NULL ? "aucune" : pack->source_name);
-    http_send_chunkf(client,
-                     "</strong></p>"
-                     "<p>Etat: <strong>%s</strong> / Session restante: %u s / Cooldown: %u s</p>"
-                     "<p>Patterns: %u / Steps: %u / Capture every: %u</p>"
-                     "<p>Selection: <strong>",
-                     game_get_state_text(),
-                     (unsigned)(game_get_session_remaining_ms() / 1000u),
-                     (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
-                     pack == NULL ? 0 : pack->pattern_count,
-                     step_count,
-                     pack == NULL ? 0 : pack->capture_every);
-    http_send_chunk_escaped(client, game_get_selected_pattern_id());
-    http_send_chunk(client,
-                    "</strong></p>"
-                    "<form action='/patterns/select' method='get'>"
-                    "<div class='field'><label>Pattern a jouer</label><select name='index'>");
-    int16_t selected = game_get_selected_pattern();
-    http_send_chunkf(client, "<option value='-1'%s>Auto / aleatoire pondere</option>",
-                     selected < 0 ? " selected" : "");
-    if (pack != NULL) {
-        for (uint16_t i = 0; i < pack->pattern_count; i++) {
-            http_send_chunkf(client, "<option value='%d'%s>", i, selected == (int16_t)i ? " selected" : "");
-            http_send_chunk_escaped(client, pack->patterns[i].id);
-            http_send_chunk(client, " - ");
-            http_send_chunk_escaped(client, pack->patterns[i].name);
-            http_send_chunk(client, "</option>");
-        }
-    }
-    http_send_chunkf(client,
-                     "</select></div><button type='submit'>Appliquer le pattern</button></form>"
-                     "<form action='/patterns/speed' method='get'>"
-                     "<div class='field'><label>Vitesse globale: <strong>%u%%</strong></label>"
-                     "<input name='value' type='number' min='%u' max='%u' step='5' value='%u'></div>"
-                     "<button type='submit'>Appliquer la vitesse</button>"
-                     "<a href='/patterns/speed?value=75'>75%%</a>"
-                     "<a href='/patterns/speed?value=100'>100%%</a>"
-                     "<a href='/patterns/speed?value=150'>150%%</a>"
-                     "</form>",
-                     game_get_speed_percent(),
-                     PATTERN_SPEED_MIN_PERCENT,
-                     PATTERN_SPEED_MAX_PERCENT,
-                     game_get_speed_percent());
+    http_send_page_start(client, "Patterns Upload", NULL);
+    http_send_chunk(client, "<p>Upload d'un nouveau <code>patterns.dat</code>.</p>");
     http_send_chunk(client,
                     "<div class='field'><input id='patterns_file' type='file' accept='.dat,application/octet-stream'></div>"
                     "<button id='upload' type='button'>Uploader et activer</button>"
@@ -823,12 +781,47 @@ static void http_send_patterns(int client)
                     "if(!f.files.length){r.textContent='Selectionner un fichier DAT';return;}"
                     "r.textContent='Validation et activation...';"
                     "try{const x=await fetch('/patterns/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f.files[0]});"
-                    "r.textContent=await x.text();if(x.ok)setTimeout(()=>location.reload(),900);}"
+                    "r.textContent=await x.text();if(x.ok)setTimeout(()=>location.href='/',900);}"
                     "catch(e){r.textContent='Echec upload';}"
                     "};"
                     "</script>");
-    http_send_chunkf(client, "<p class='muted'>SPIFFS: %s</p>", pattern_store_get_status());
-    http_send_chunk(client, "<p><a href='/patterns/download'>Telecharger le pack actif</a><a href='/'>Accueil</a></p>");
+    http_send_chunkf(client, "<p class='muted'>Status: %s</p>", pattern_store_get_status());
+    http_send_chunk(client, "<p><a href='/patterns/download'>Telecharger le pack actif</a><a href='/'>Retour dashboard</a></p>");
+    http_send_page_end(client);
+    http_send_chunked_end(client);
+}
+
+static void http_send_settings(int client)
+{
+    struct ip_info ap_ip;
+    memset(&ap_ip, 0, sizeof(ap_ip));
+    wifi_get_ip_info(SOFTAP_IF, &ap_ip);
+    http_send_chunked_start(client, "200 OK", "text/html; charset=utf-8");
+    http_send_page_start(client, "Settings", NULL);
+    http_send_chunkf(client,
+                     "<p>IP AP: <strong>%s</strong></p>"
+                     "<div class='field'><label>Scale mouvement (%%)</label><input id='scale' type='number' min='10' max='100' value='%u'></div>"
+                     "<div class='field'><label>Session max (s)</label><input id='session' type='number' min='60' max='3600' value='%u'></div>"
+                     "<div class='field'><label>Cooldown (s)</label><input id='cooldown' type='number' min='0' max='3600' value='%u'></div>"
+                     "<p><button id='apply'>Appliquer</button><button class='off' id='reset'>Reset ESP</button></p>"
+                     "<p id='res' class='muted'></p>"
+                     "<p><a href='/'>Retour dashboard</a></p>"
+                     "<script>"
+                     "const r=document.getElementById('res');"
+                     "document.getElementById('apply').onclick=async()=>{"
+                     "const s=document.getElementById('scale').value,m=document.getElementById('session').value,c=document.getElementById('cooldown').value;"
+                     "const u='/api/settings?scale='+encodeURIComponent(s)+'&session_s='+encodeURIComponent(m)+'&cooldown_s='+encodeURIComponent(c);"
+                     "try{const x=await fetch(u);r.textContent=await x.text();}catch(e){r.textContent='Erreur';}"
+                     "};"
+                     "document.getElementById('reset').onclick=async()=>{"
+                     "if(!confirm('Redemarrer ESP ?')) return;"
+                     "try{const x=await fetch('/api/settings?action=reset');r.textContent=await x.text();}catch(e){r.textContent='Erreur';}"
+                     "};"
+                     "</script>",
+                     ipaddr_ntoa(&ap_ip.ip),
+                     game_get_motion_scale_percent(),
+                     (unsigned)(game_get_session_max_ms() / 1000u),
+                     (unsigned)(game_get_cooldown_ms() / 1000u));
     http_send_page_end(client);
     http_send_chunked_end(client);
 }
@@ -1109,6 +1102,124 @@ static void http_handle_patterns_speed_request(int client, const char *query)
     http_redirect(client, "/patterns");
 }
 
+static void http_handle_api_state(int client)
+{
+    char body[320];
+    snprintf(body, sizeof(body),
+             "{\"state\":\"%s\",\"session_s\":%u,\"cooldown_s\":%u,"
+             "\"laser\":\"%s\",\"selected_pattern\":\"%s\",\"speed\":%u}",
+             game_get_state_text(),
+             (unsigned)(game_get_session_remaining_ms() / 1000u),
+             (unsigned)(game_get_cooldown_remaining_ms() / 1000u),
+             hardware_laser_is_on() ? "ON" : "OFF",
+             game_get_selected_pattern_id(),
+             game_get_speed_percent());
+    http_send_response(client, "200 OK", "application/json; charset=utf-8", body);
+}
+
+static void http_handle_api_patterns(int client)
+{
+    const pattern_pack_t *pack = game_get_pattern_pack();
+    char header[256];
+    snprintf(header, sizeof(header),
+             "{\"selected\":%d,\"patterns\":[",
+             game_get_selected_pattern());
+    const char *resp_header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n\r\n";
+    http_send(client, resp_header);
+    http_send(client, header);
+    if (pack != NULL) {
+        for (uint16_t i = 0; i < pack->pattern_count; i++) {
+            char row[196];
+            snprintf(row, sizeof(row),
+                     "%s{\"index\":%u,\"label\":\"%s - %s\"}",
+                     i == 0 ? "" : ",",
+                     (unsigned)i,
+                     pack->patterns[i].id,
+                     pack->patterns[i].name);
+            http_send(client, row);
+        }
+    }
+    http_send(client, "]}\n");
+}
+
+static void http_handle_api_control(int client, const char *query)
+{
+    char action[32];
+    char value[16];
+    query_value(query, "action", action, sizeof(action));
+    if (strcmp(action, "on") == 0) {
+        if (!game_set_enabled(true)) {
+            http_send_response(client, "409 Conflict", "text/plain; charset=utf-8", "Cooldown actif.\n");
+            return;
+        }
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Jeu ON.\n");
+        return;
+    }
+    if (strcmp(action, "off") == 0) {
+        game_set_enabled(false);
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Jeu OFF.\n");
+        return;
+    }
+    if (strcmp(action, "laser_test_on") == 0) {
+        game_laser_test_on();
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Laser test ON.\n");
+        return;
+    }
+    if (strcmp(action, "laser_off") == 0) {
+        game_laser_test_off();
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Laser OFF.\n");
+        return;
+    }
+    if (strcmp(action, "select_pattern") == 0) {
+        query_value(query, "index", value, sizeof(value));
+        if (!game_set_selected_pattern((int16_t)atoi(value))) {
+            http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8", "Pattern invalide.\n");
+            return;
+        }
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Pattern applique.\n");
+        return;
+    }
+    if (strcmp(action, "set_speed") == 0) {
+        query_value(query, "value", value, sizeof(value));
+        game_set_speed_percent((uint16_t)atoi(value));
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Vitesse appliquee.\n");
+        return;
+    }
+    http_send_response(client, "400 Bad Request", "text/plain; charset=utf-8", "Action inconnue.\n");
+}
+
+static void http_handle_api_settings(int client, const char *query)
+{
+    char action[16];
+    char value[16];
+    query_value(query, "action", action, sizeof(action));
+    if (strcmp(action, "reset") == 0) {
+        http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Redemarrage...\n");
+        vTaskDelay(ms_to_ticks_min1(150));
+        system_restart();
+        return;
+    }
+
+    query_value(query, "scale", value, sizeof(value));
+    if (value[0] != '\0') {
+        game_set_motion_scale_percent((uint16_t)atoi(value));
+    }
+    query_value(query, "session_s", value, sizeof(value));
+    if (value[0] != '\0') {
+        game_set_session_max_ms((uint32_t)atoi(value) * 1000u);
+    }
+    query_value(query, "cooldown_s", value, sizeof(value));
+    if (value[0] != '\0') {
+        game_set_cooldown_ms((uint32_t)atoi(value) * 1000u);
+    }
+
+    http_send_response(client, "200 OK", "text/plain; charset=utf-8", "Settings appliques.\n");
+}
+
 static void http_handle_laser_pulse_request(int client, const char *query)
 {
 #if DEBUG_HARDWARE_ENABLED
@@ -1286,6 +1397,15 @@ static void http_handle_request(int client, char *request, int request_len)
         game_set_enabled(false);
         hardware_laser_set(false);
         http_handle_patterns_dat_upload(client, request, request_len);
+    } else if (strcmp(path, "/api/state") == 0) {
+        http_handle_api_state(client);
+    } else if (strcmp(path, "/api/patterns") == 0) {
+        http_handle_api_patterns(client);
+    } else if (strncmp(path, "/api/control?", 13) == 0) {
+        http_handle_api_control(client, path + 13);
+    } else if (strncmp(path, "/api/settings", 13) == 0) {
+        const char *q = strchr(path, '?');
+        http_handle_api_settings(client, q == NULL ? "" : q + 1);
     } else if (strcmp(path, "/on") == 0) {
         if (game_set_enabled(true)) {
             WEB_LOG("toy enabled from web state=%s", game_get_state_text());
@@ -1326,6 +1446,12 @@ static void http_handle_request(int client, char *request, int request_len)
     } else if (strcmp(path, "/patterns") == 0) {
         WEB_LOG("patterns page requested");
         http_send_patterns(client);
+    } else if (strcmp(path, "/Patterns") == 0) {
+        WEB_LOG("patterns page requested uppercase");
+        http_send_patterns(client);
+    } else if (strcmp(path, "/settings") == 0) {
+        WEB_LOG("settings page requested");
+        http_send_settings(client);
     } else if (strcmp(path, "/patterns/download") == 0) {
         WEB_LOG("patterns download requested");
         http_send_patterns_download(client);
@@ -1343,12 +1469,7 @@ static void http_handle_request(int client, char *request, int request_len)
     } else if (strcmp(path, "/") == 0) {
         WEB_LOG("root requested host=%s toy=%d station=%s",
                 host, game_is_enabled(), station_status_text());
-        if (wifi_station_get_connect_status() == STATION_GOT_IP) {
-            http_send_home(client);
-        } else {
-            WEB_LOG("root redirected to wifi config station=%s", station_status_text());
-            http_redirect(client, "/wifi");
-        }
+        http_send_home(client);
     } else if (strcmp(path, "/generate_204") == 0 ||
                strcmp(path, "/gen_204") == 0 ||
                strcmp(path, "/hotspot-detect.html") == 0 ||
