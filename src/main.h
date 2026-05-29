@@ -41,7 +41,9 @@
 
 #define SERVO_PERIOD_MS         20
 #define SERVO_MIN_US            500
-#define SERVO_MAX_US            2500
+#define SERVO_MAX_US            2400
+#define SERVO_PULSE_ANGLE_MIN   20
+#define SERVO_PULSE_ANGLE_MAX   160
 
 // -----------------------------------------------------------------------------
 // Moteur de patterns

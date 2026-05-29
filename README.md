@@ -61,6 +61,17 @@ Les réglages principaux sont dans `src/main.h`.
 
 Ces limites évitent de forcer mécaniquement les servos. À ajuster selon le montage.
 
+Le mapping impulsion utilise la plage utile suivante :
+
+```c
+#define SERVO_PULSE_ANGLE_MIN   20
+#define SERVO_PULSE_ANGLE_MAX   160
+#define SERVO_MIN_US            500
+#define SERVO_MAX_US            2400
+```
+
+Soit `20° -> 500 us`, `90° -> 1450 us`, `160° -> 2400 us`.
+
 Si un axe part dans le mauvais sens :
 
 ```c

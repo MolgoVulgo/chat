@@ -63,14 +63,16 @@ void hardware_reset_position(void)
 
 static uint32_t servo_angle_to_us(int angle)
 {
-    if (angle < 0) {
-        angle = 0;
+    if (angle < SERVO_PULSE_ANGLE_MIN) {
+        angle = SERVO_PULSE_ANGLE_MIN;
     }
-    if (angle > 180) {
-        angle = 180;
+    if (angle > SERVO_PULSE_ANGLE_MAX) {
+        angle = SERVO_PULSE_ANGLE_MAX;
     }
 
-    return SERVO_MIN_US + ((SERVO_MAX_US - SERVO_MIN_US) * (uint32_t)angle) / 180;
+    return SERVO_MIN_US +
+           ((SERVO_MAX_US - SERVO_MIN_US) * (uint32_t)(angle - SERVO_PULSE_ANGLE_MIN)) /
+               (SERVO_PULSE_ANGLE_MAX - SERVO_PULSE_ANGLE_MIN);
 }
 
 static void gpio_output_init(uint8_t gpio)

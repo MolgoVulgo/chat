@@ -27,6 +27,9 @@ static volatile uint32_t active_run_revision = 0;
 static volatile uint32_t session_started_ms = 0;
 static volatile uint32_t cooldown_until_ms = 0;
 static volatile uint32_t laser_pulse_until_ms = 0;
+static volatile uint32_t session_max_ms = GAME_SESSION_MAX_MS;
+static volatile uint32_t cooldown_ms = GAME_COOLDOWN_MS;
+static volatile uint16_t motion_scale_percent = 100;
 
 static uint32_t now_ms(void)
 {
@@ -67,10 +70,10 @@ static void stop_session(bool start_cooldown)
     session_started_ms = 0;
 
     if (start_cooldown) {
-        cooldown_until_ms = now_ms() + GAME_COOLDOWN_MS;
+        cooldown_until_ms = now_ms() + cooldown_ms;
         game_state = GAME_STATE_COOLDOWN;
         PATTERN_LOG("session stopped cooldown_ms=%u revision=%u",
-                    (unsigned)GAME_COOLDOWN_MS,
+                    (unsigned)cooldown_ms,
                     (unsigned)pattern_control_revision);
     } else {
         cooldown_until_ms = 0;
@@ -85,7 +88,7 @@ static bool session_has_expired(void)
     if (!toy_enabled || session_started_ms == 0) {
         return false;
     }
-    return now_ms() - session_started_ms >= GAME_SESSION_MAX_MS;
+    return now_ms() - session_started_ms >= session_max_ms;
 }
 
 void game_use_default_patterns(void)
@@ -221,7 +224,7 @@ bool game_set_enabled(bool enabled)
         hardware_servo_set_enabled(true);
         hardware_laser_set(true);
         PATTERN_LOG("session started max_ms=%u revision=%u",
-                    (unsigned)GAME_SESSION_MAX_MS,
+                    (unsigned)session_max_ms,
                     (unsigned)pattern_control_revision);
     } else {
         stop_laser_pulse();
@@ -282,10 +285,55 @@ uint32_t game_get_session_remaining_ms(void)
     }
 
     uint32_t elapsed = now_ms() - session_started_ms;
-    if (elapsed >= GAME_SESSION_MAX_MS) {
+    if (elapsed >= session_max_ms) {
         return 0;
     }
-    return GAME_SESSION_MAX_MS - elapsed;
+    return session_max_ms - elapsed;
+}
+
+void game_set_session_max_ms(uint32_t new_session_max_ms)
+{
+    if (new_session_max_ms < 60u * 1000u) {
+        new_session_max_ms = 60u * 1000u;
+    }
+    if (new_session_max_ms > 60u * 60u * 1000u) {
+        new_session_max_ms = 60u * 60u * 1000u;
+    }
+    session_max_ms = new_session_max_ms;
+}
+
+uint32_t game_get_session_max_ms(void)
+{
+    return session_max_ms;
+}
+
+void game_set_cooldown_ms(uint32_t new_cooldown_ms)
+{
+    if (new_cooldown_ms > 60u * 60u * 1000u) {
+        new_cooldown_ms = 60u * 60u * 1000u;
+    }
+    cooldown_ms = new_cooldown_ms;
+}
+
+uint32_t game_get_cooldown_ms(void)
+{
+    return cooldown_ms;
+}
+
+void game_set_motion_scale_percent(uint16_t scale_percent)
+{
+    if (scale_percent < 10u) {
+        scale_percent = 10u;
+    }
+    if (scale_percent > 100u) {
+        scale_percent = 100u;
+    }
+    motion_scale_percent = scale_percent;
+}
+
+uint16_t game_get_motion_scale_percent(void)
+{
+    return motion_scale_percent;
 }
 
 #if DEBUG_HARDWARE_ENABLED
@@ -423,7 +471,11 @@ static void set_game_position(int16_t x, int16_t y)
 {
     current_x = clamp_coord(x);
     current_y = clamp_coord(y);
-    hardware_set_position_from_coord(current_x, current_y);
+
+    uint16_t scale = motion_scale_percent;
+    int32_t sx = ((int32_t)current_x * (int32_t)scale) / 100;
+    int32_t sy = ((int32_t)current_y * (int32_t)scale) / 100;
+    hardware_set_position_from_coord(clamp_coord(sx), clamp_coord(sy));
 }
 
 static int16_t choose_weighted_pattern_index(const pattern_pack_t *pack)
@@ -478,7 +530,10 @@ static bool step_has_position(const pattern_step_t *step)
 
 static bool step_runtime_laser_on(const pattern_step_t *step)
 {
-    return step->type != STEP_OFF_HOLD && step->type != STEP_OFF_MOVE;
+    if (step->type == STEP_OFF_HOLD || step->type == STEP_OFF_MOVE) {
+        return false;
+    }
+    return step->laser;
 }
 
 static const pattern_step_t *first_position_step(const pattern_t *pattern)

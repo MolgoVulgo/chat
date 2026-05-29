@@ -62,7 +62,7 @@ static int16_t x_u16_to_internal(uint16_t x)
 
 static int16_t y_u16_to_internal(uint16_t y)
 {
-    return (int16_t)(1000 - ((int32_t)y * 2));
+    return (int16_t)((int32_t)y * 2 - 1000);
 }
 
 static s32_t flash_rw(uint32_t addr, uint32_t size, uint8_t *data, bool write)

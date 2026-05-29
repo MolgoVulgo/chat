@@ -35,5 +35,11 @@ int16_t game_get_selected_pattern(void);
 const char *game_get_selected_pattern_id(void);
 void game_set_speed_percent(uint16_t speed_percent);
 uint16_t game_get_speed_percent(void);
+void game_set_session_max_ms(uint32_t session_max_ms);
+uint32_t game_get_session_max_ms(void);
+void game_set_cooldown_ms(uint32_t cooldown_ms);
+uint32_t game_get_cooldown_ms(void);
+void game_set_motion_scale_percent(uint16_t scale_percent);
+uint16_t game_get_motion_scale_percent(void);
 
 #endif
